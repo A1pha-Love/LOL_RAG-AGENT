@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
@@ -121,21 +121,21 @@ AGENT_TOOLS = [
 # per-turn runtime (multi-turn only)
 # --------------------------------------------------------------------------
 
-@dataclass
 class TurnContext:
     """Mutable state for the turn currently being answered.
 
-    A plain attribute rather than LangGraph state because it is produced by a
-    pre-step of the turn, not by the graph, and because it must be readable from
+    A plain object rather than LangGraph state because it is produced by a
+    pre-step of the turn, not by the graph, and because it must be reachable from
     inside a tool call.
     """
 
-    session_id: str
-    history: list[Turn] = field(default_factory=list)
-    retrieval_query: str | None = None
-    rewrite_fallback: str | None = None
-    rewrite_done: bool = False
-    tool_calls: list[str] = field(default_factory=list)
+    def __init__(self, session_id: str, history: list[Turn] | None = None) -> None:
+        self.session_id = session_id
+        self.history: list[Turn] = list(history or [])
+        self.retrieval_query: str | None = None
+        self.rewrite_fallback: str | None = None
+        self.rewrite_done = False
+        self.tool_calls: list[str] = []
 
     def prepare(self, question: str) -> None:
         """Rewrite the retrieval query once per turn."""
@@ -147,15 +147,25 @@ class TurnContext:
         self.rewrite_fallback = fallback
 
 
-_TURN: TurnContext | None = None
+# ContextVar, not a module global: the HTTP backend answers requests
+# concurrently, and a single shared slot would let one turn's rewritten query
+# leak into another turn's tool call. A ContextVar is per-task, so it is correct
+# for both the CLI and an async server.
+_TURN: ContextVar[TurnContext | None] = ContextVar("lol_agent_turn", default=None)
+
+
+def current_turn() -> TurnContext | None:
+    """The turn being answered, or None outside a session."""
+    return _TURN.get()
 
 
 def current_retrieval_query(question: str) -> str:
     """The query retrieval should use, applying the rewrite when one exists."""
-    if _TURN is None:
+    context = _TURN.get()
+    if context is None:
         return question
-    _TURN.prepare(question)
-    return _TURN.retrieval_query or question
+    context.prepare(question)
+    return context.retrieval_query or question
 
 
 def build_agent():
@@ -172,11 +182,12 @@ def build_agent():
         messages = [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
         response = model.invoke(messages)
         # Record which tools this turn used, for the session transcript.
-        if _TURN is not None:
+        context = _TURN.get()
+        if context is not None:
             for call in getattr(response, "tool_calls", []) or []:
                 name = call.get("name")
-                if name and name not in _TURN.tool_calls:
-                    _TURN.tool_calls.append(name)
+                if name and name not in context.tool_calls:
+                    context.tool_calls.append(name)
         return {"messages": [response]}
 
     graph = StateGraph(MessagesState)
@@ -205,6 +216,33 @@ def ask(question: str) -> str:
     return _final_text(result)
 
 
+def prepare_turn(session: Any, question: str) -> TurnContext:
+    """Build the turn context and rewrite the retrieval query against history.
+
+    Split out so the streaming server can reuse it: it must run *before*
+    streaming starts, so the rewritten query can be reported to the client as a
+    first event rather than discovered afterwards.
+    """
+    context = TurnContext(session_id=session.session_id, history=session.history())
+    context.prepare(question)
+    return context
+
+
+def session_messages(session: Any) -> list[Any]:
+    """Rebuild the transcript as LangChain messages.
+
+    Assistant replies are included: the model needs its own earlier answers to
+    interpret follow-ups such as "他的胜率呢".
+    """
+    messages: list[Any] = []
+    for turn in session.turns:
+        if turn.role == "user":
+            messages.append(HumanMessage(content=turn.content))
+        else:
+            messages.append(AIMessage(content=turn.content))
+    return messages
+
+
 def ask_in_session(
     question: str,
     session_id: str,
@@ -218,32 +256,21 @@ def ask_in_session(
     stateless per call: the transcript is rebuilt from the store so that a later
     process can resume the same session.
     """
-    global _TURN
     if not question.strip():
         raise ValueError("Question cannot be empty")
 
     store = store or SessionStore()
     session = store.get_session(session_id)
-    context = TurnContext(session_id=session_id, history=session.history())
-
-    # Rebuild the transcript, including assistant replies: the model needs its
-    # own earlier answers to interpret "他的胜率呢"-style follow-ups.
-    messages: list[Any] = []
-    for turn in session.turns:
-        if turn.role == "user":
-            messages.append(HumanMessage(content=turn.content))
-        else:
-            messages.append(AIMessage(content=turn.content))
+    context = prepare_turn(session, question)
 
     # The runtime must be installed *before* the graph runs: it carries the
     # rewritten retrieval query and collects which tools the turn used.
-    previous, _TURN = _TURN, context
+    token = _TURN.set(context)
     try:
-        context.prepare(question)
-        result = build_agent().invoke({"messages": [*messages, HumanMessage(content=question)]})
+        result = build_agent().invoke({"messages": [*session_messages(session), HumanMessage(content=question)]})
         answer = _final_text(result)
     finally:
-        _TURN = previous
+        _TURN.reset(token)
 
     store.append_turn(session_id, "user", question)
     store.append_turn(

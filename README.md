@@ -41,7 +41,29 @@ QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding
 在项目根目录使用已配置好的虚拟环境：
 
 ```powershell
+# 单轮问答
 .\.venv\Scripts\python.exe scripts\chat_agent.py "这份数据去重后有多少场比赛？"
+
+# 多轮对话（会话持久化到 .cache/sessions.db）
+.\.venv\Scripts\python.exe scripts\chat_session.py
+.\.venv\Scripts\python.exe scripts\chat_session.py --list
+.\.venv\Scripts\python.exe scripts\chat_session.py --session <id> -q "那他的胜率呢？"
+
+# HTTP 后端（流式问答，SSE）
+.\.venv\Scripts\python.exe scripts\serve.py            # http://127.0.0.1:8000/docs
+```
+
+多轮对话会在检索前把「历史 + 当前问题」改写成独立查询，因此
+「那他的胜率呢？」这类省略主语的追问仍能检索到正确文档；
+改写失败时回退到原问题，不会中断整轮。
+
+**后端只监听回环地址。** 它没有身份认证，对外暴露会让任何人都能读取会话记录并消耗 API 配额。
+
+离线检查（不调用任何模型 API，零配额）：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_checks.py          # 全部离线检查
+.\.venv\Scripts\python.exe scripts\run_checks.py --fast   # 提交前用的快速子集
 ```
 
 如果本地知识索引不存在或源文档发生变化，构建/更新索引：

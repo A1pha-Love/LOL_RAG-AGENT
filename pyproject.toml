@@ -11,6 +11,10 @@ dependencies = [
     # Imported directly by lol_agent.embeddings, so it must not rely on being a
     # transitive dependency of langchain-openai.
     "openai>=3.26.0",
+    # HTTP backend (apps/api.py): answers stream over Server-Sent Events.
+    "fastapi>=0.143.0",
+    "uvicorn[standard]>=0.54.0",
+    "sse-starlette>=3.5.0",
 ]
 
 [project.optional-dependencies]

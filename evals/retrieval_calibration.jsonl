@@ -1,0 +1,23 @@
+{"id": "ban_rate_definition", "query": "Ban 率以什么为分母，同一对局中同一英雄重复出现在多个禁用位如何计算？", "expected_retrieval": [{"source": "kbase/project_metrics_ban_event.md", "heading": "英雄禁用率（对局口径）"}], "class": "relevant"}
+{"id": "dataset_time_scope", "query": "这份排位赛数据覆盖什么日期范围，能否代表当前版本？", "expected_retrieval": [{"source": "kbase/project_field_reference.md", "heading": "数据时间范围与时间戳"}], "class": "relevant"}
+{"id": "baron_causality", "query": "指标字典允许对首个 Baron 和最终胜利之间作出什么结论？", "expected_retrieval": [{"source": "kbase/project_metrics_ban_event.md", "heading": "因果边界"}], "class": "relevant"}
+{"id": "team_label_color", "query": "team1 和 team2 是否分别对应蓝方与红方？", "expected_retrieval": [{"source": "kbase/project_field_reference.md", "heading": "字段语义与颜色方约定"}], "class": "relevant"}
+{"id": "raw_rows_and_dedup", "query": "原始数据有多少行和字段？按 gameId 去重后有多少场，重复记录如何处理？", "expected_retrieval": [{"source": "kbase/project_data_audit.md", "heading": "文件结构"}, {"source": "kbase/project_dedup_rule.md", "heading": "原始规模"}], "class": "relevant"}
+{"id": "first_blood_two_rates", "query": "一血发生率和取得一血队伍的条件胜率分别怎么计算，能说明因果吗？", "expected_retrieval": [{"source": "kbase/project_metrics_ban_event.md", "heading": "两个分母不要混淆"}], "class": "relevant"}
+{"id": "color_side_guardrail", "query": "为什么不能比较蓝方和红方的整体胜率？team1、team2 是什么标签？", "expected_retrieval": [{"source": "kbase/project_overview.md", "heading": "颜色方（蓝方/红方）问题"}], "class": "relevant"}
+{"id": "unsupported_jungle_current_meta", "query": "为什么这份数据不能给出当前版本打野胜率排名？", "expected_retrieval": [{"source": "kbase/project_overview.md", "heading": "边界外的替代指标"}], "class": "relevant"}
+{"id": "duration_definition", "query": "平均对局时长的统计范围和计算口径是什么？", "expected_retrieval": [{"source": "kbase/project_metrics_core.md", "heading": "平均对局时长"}], "class": "relevant"}
+{"id": "event_field_encoding", "query": "firstBlood、firstBaron 和 winner 字段如何表示取得事件的队伍？", "expected_retrieval": [{"source": "kbase/project_field_reference.md", "heading": "胜负与首个事件的取值编码"}], "class": "relevant"}
+{"id": "historical_dataset_boundary", "query": "这份数据是哪一段时间的历史排位赛样本，有没有版本和分路信息？", "expected_retrieval": [{"source": "kbase/meta_dataset_provenance.md", "heading": "边界声明"}], "class": "relevant"}
+{"id": "summoner_spell_coverage", "query": "数据里的召唤师技能字段保存的是什么，能否对应到技能名称？", "expected_retrieval": [{"source": "kbase/project_field_reference.md", "heading": "英雄与召唤师技能"}], "class": "relevant"}
+{"id": "champion_id_sentinel", "query": "英雄字段里出现的 -1 代表什么？", "expected_retrieval": [{"source": "kbase/project_champion_name_mapping.md", "heading": "CSV 中的哨兵值"}], "class": "relevant"}
+{"id": "urgot_rename_version", "query": "英雄 ID 6 的中文名称在哪个补丁发生了变化，依据是什么？", "expected_retrieval": [{"source": "kbase/conflict_urgot_rename.md", "heading": "事实"}], "class": "relevant"}
+{"id": "python_binary_search", "query": "如何用 Python 实现二分查找，并证明它的时间复杂度？", "expected_retrieval": [{"source": "kbase/offtopic_python_binary_search.md", "heading": "实现"}], "class": "offtopic"}
+{"id": "tokyo_weather", "query": "东京的气候特点是什么，梅雨期在哪个月？", "expected_retrieval": [{"source": "kbase/offtopic_tokyo_weather.md", "heading": "气候概况"}], "class": "offtopic"}
+{"id": "coffee_descaling", "query": "家用咖啡机应该怎样除垢，多久清洁一次？", "expected_retrieval": [{"source": "kbase/offtopic_coffee_descaling.md", "heading": "操作步骤"}], "class": "offtopic"}
+{"id": "pro_match_result", "query": "上周 LPL 决赛的比分是多少，哪支队伍夺冠？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "skin_price", "query": "最新一款终极皮肤多少钱，什么时候下架？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "player_salary", "query": "Faker 今年的年薪是多少？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "patch_schedule", "query": "下一个版本什么时候更新，会有哪些英雄调整？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "car_tire_repair", "query": "汽车轮胎漏气后应该如何检查和修补？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "income_tax", "query": "个人所得税的专项附加扣除如何申报？", "expected_retrieval": [], "class": "unanswerable"}

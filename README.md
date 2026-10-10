@@ -1,0 +1,76 @@
+# LoL Ranked Data Agent
+
+面向本地 League of Legends 历史排位赛数据的中文分析 Agent。项目通过 LangGraph 编排单 Agent，用 Qwen 对话模型选择工具；精确统计由 Python 工具完成，项目文档由本地 RAG 检索后作为回答依据。
+
+## 项目状态
+
+本地 MVP 已完成并通过阶段性验收，功能、验证记录和已知限制见 [最终验收记录](reports/final_acceptance.md)。项目仅用于本地运行，未发布或部署为线上服务。
+
+## 功能
+
+- 对 `games.csv` 提供确定性统计：去重对局数、数据概览、英雄出场与胜率、Ban 统计、首个事件发生率与条件胜率、平均时长。
+- 按 `gameId` 去重；原始 CSV 保持只读。数据为 2017-06-08 至 2017-09-06 UTC 的历史 EUW 排位对局。
+- 支持通过英雄数值 ID、Data Dragon 7.17.1 的中文名称/标题、英文标识符及登记别名查询；名称映射不代表逐场比赛补丁版本。
+- 对指标定义、数据口径和范围问题检索项目文档，并要求回答给出文档来源。
+- 对 API 不可用、Embedding 检索不可用和知识索引缺失返回明确错误；命令行输出使用 UTF-8。
+
+## 技术栈
+
+- Python 3.14.x；依赖版本见 `pyproject.toml` 与 `requirements-lock.txt`。
+- LangGraph、LangChain OpenAI-compatible client、OpenAI Python SDK。
+- Qwen `qwen3.8-flash` 对话模型；DashScope 兼容模式 API。
+- Qwen `qwen3.7-text-embedding`，1024 维文本向量；SQLite 保存本地 RAG 索引。
+- CSV 数据由 Python 标准库处理；指标计算不依赖模型生成数值。
+
+## 配置
+
+项目根目录的 `.env` 至少配置以下变量：
+
+```dotenv
+DASHSCOPE_API_KEY=你的百炼APIKey
+DASHSCOPE_WORKSPACE_ID=你的WorkspaceID
+DASHSCOPE_REGION=cn-beijing
+QWEN_CHAT_MODEL=qwen3.8-flash
+QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding
+```
+
+不要把 `.env` 提交到版本库。API Key 同时用于对话与向量请求；调用会产生相应服务用量。
+
+## 安装和运行
+
+在项目根目录使用已配置好的虚拟环境：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\chat_agent.py "这份数据去重后有多少场比赛？"
+```
+
+如果本地知识索引不存在或源文档发生变化，构建/更新索引：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\index_knowledge.py
+```
+
+索引命令会扫描 `kbase/` 下的全部 Markdown 文档（当前 42 份，按 `category` 分为
+`project` / `domain` / `conflict` / `meta` / `offtopic`），按标题路径分块并调用
+Embedding API；原始 CSV 不会被向量化。生成的 `reports/knowledge.db` 是本地文件，
+已由 `.gitignore` 排除。`scripts/index_knowledge.py --dry-run` 可在不调用 API 的情况下
+预览分块结果，`--check` 可检查索引是否已过期。
+
+## 目录说明
+
+- `src/lol_agent/`：Agent、统计工具、Embedding 适配器和本地 RAG 检索。
+- `docs/`：指标字典、英雄映射说明及 7.17.1 映射数据。
+- `reports/data_audit.md`：数据审计结果；`reports/final_acceptance.md`：验收结论、验证证据与限制。
+- `evals/`：统计参考案例、RAG/Agent 案例及检索阈值校准数据。
+- `scripts/`：CLI、索引、审计、检索校准和评测入口。
+
+## 数据与回答边界
+
+- 不按蓝方/红方拆分或比较胜率；`team1/team2` 仅是单局内队伍标识。
+- 数据没有玩家、分路、逐分钟过程或逐场 patch 信息；不能据此回答当前版本或分路排名。
+- 首个事件与获胜只报告统计关联，不声称因果。
+- `docs/metric_dictionary.md` 仍标为初稿：部分原始字段含义依赖公开二手说明，正式对外发布前应再核对原始数据集元数据。
+
+## 评测
+
+统计参考案例见 `evals/cases.jsonl`；Agent 与 RAG 案例、用量记录和评测口径见 [评测说明](evals/README.md)。完整 10 案例回归按额度优先策略只运行过一次；最新提示词变更后的两个受影响案例已定向复测，详情见最终验收记录。

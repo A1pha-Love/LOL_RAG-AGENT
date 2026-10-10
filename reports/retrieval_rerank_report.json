@@ -1,0 +1,764 @@
+{
+  "summary": {
+    "cases_total": 23,
+    "cases_scored": 17,
+    "rerank_model": "qwen3-rerank",
+    "rerank_failures": 0,
+    "embedding_recall@1": 8,
+    "embedding_recall@3": 14,
+    "reranked_recall@1": 8,
+    "reranked_recall@3": 15,
+    "candidate_pool": 20,
+    "embedding_top1_score_by_class": {
+      "relevant": {
+        "min": 0.5922,
+        "max": 0.8799,
+        "n": 14
+      },
+      "offtopic": {
+        "min": 0.8515,
+        "max": 0.9374,
+        "n": 3
+      },
+      "unanswerable": {
+        "min": 0.342,
+        "max": 0.6334,
+        "n": 6
+      }
+    },
+    "rerank_top1_score_by_class": {
+      "relevant": {
+        "min": 0.8099,
+        "max": 0.979,
+        "n": 14
+      },
+      "offtopic": {
+        "min": 0.8453,
+        "max": 0.9453,
+        "n": 3
+      },
+      "unanswerable": {
+        "min": 0.284,
+        "max": 0.6185,
+        "n": 6
+      }
+    }
+  },
+  "cases": [
+    {
+      "id": "ban_rate_definition",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_metrics_ban_event.md",
+          "heading": "英雄禁用率（对局口径）"
+        }
+      ],
+      "embedding_top3": [
+        "Ban 率与首个事件指标口径 > 英雄禁用率（对局口径）",
+        "Ban 率与首个事件指标口径 > 英雄禁用场数",
+        "Ban 率与首个事件指标口径 > 首次事件发生率"
+      ],
+      "embedding_top1_score": 0.854876,
+      "embedding_hit@3": true,
+      "embedding_hit@1": true,
+      "reranked_top3": [
+        "Ban 率与首个事件指标口径 > 英雄禁用场数",
+        "Ban 率与首个事件指标口径 > 首次事件发生率",
+        "Ban 率与首个事件指标口径 > 英雄禁用率（对局口径）"
+      ],
+      "rerank_scores": [
+        0.96135,
+        0.865958,
+        0.844478
+      ],
+      "rerank_top1_score": 0.96135,
+      "reranked_hit@3": true,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        3
+      ]
+    },
+    {
+      "id": "dataset_time_scope",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_field_reference.md",
+          "heading": "数据时间范围与时间戳"
+        }
+      ],
+      "embedding_top3": [
+        "版本冲突样本：数据期间新加入的英雄",
+        "版本冲突样本：数据期间新加入的英雄 > 引用要求",
+        "项目概览与回答边界 > 数据是什么"
+      ],
+      "embedding_top1_score": 0.673547,
+      "embedding_hit@3": false,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "数据字段定义与取值域 > 数据时间范围与时间戳",
+        "项目概览与回答边界 > 回答边界（必须遵守）",
+        "英雄名称映射与版本边界 > 版本边界（必须说明）"
+      ],
+      "rerank_scores": [
+        0.895359,
+        0.818466,
+        0.795396
+      ],
+      "rerank_top1_score": 0.895359,
+      "reranked_hit@3": true,
+      "reranked_hit@1": true,
+      "expected_rank_after": [
+        1
+      ]
+    },
+    {
+      "id": "baron_causality",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_metrics_ban_event.md",
+          "heading": "因果边界"
+        }
+      ],
+      "embedding_top3": [
+        "Ban 率与首个事件指标口径 > 因果边界",
+        "数据字段定义与取值域 > 胜负与首个事件的取值编码",
+        "核心指标定义与计算口径 > 条件队伍胜率"
+      ],
+      "embedding_top1_score": 0.59222,
+      "embedding_hit@3": true,
+      "embedding_hit@1": true,
+      "reranked_top3": [
+        "Ban 率与首个事件指标口径 > 因果边界",
+        "Ban 率与首个事件指标口径 > 首次事件方胜率",
+        "数据字段定义与取值域 > 胜负与首个事件的取值编码"
+      ],
+      "rerank_scores": [
+        0.944626,
+        0.766609,
+        0.656753
+      ],
+      "rerank_top1_score": 0.944626,
+      "reranked_hit@3": true,
+      "reranked_hit@1": true,
+      "expected_rank_after": [
+        1
+      ]
+    },
+    {
+      "id": "team_label_color",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_field_reference.md",
+          "heading": "字段语义与颜色方约定"
+        }
+      ],
+      "embedding_top3": [
+        "项目概览与回答边界 > 回答边界（必须遵守） > 颜色方（蓝方/红方）问题",
+        "数据字段定义与取值域 > 字段语义与颜色方约定",
+        "项目概览与回答边界 > 回答边界（必须遵守）"
+      ],
+      "embedding_top1_score": 0.768228,
+      "embedding_hit@3": true,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "数据字段定义与取值域 > 字段语义与颜色方约定",
+        "项目概览与回答边界 > 回答边界（必须遵守）",
+        "项目概览与回答边界 > 回答边界（必须遵守） > 颜色方（蓝方/红方）问题"
+      ],
+      "rerank_scores": [
+        0.921697,
+        0.890901,
+        0.867731
+      ],
+      "rerank_top1_score": 0.921697,
+      "reranked_hit@3": true,
+      "reranked_hit@1": true,
+      "expected_rank_after": [
+        1
+      ]
+    },
+    {
+      "id": "raw_rows_and_dedup",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_data_audit.md",
+          "heading": "文件结构"
+        },
+        {
+          "source": "kbase/project_dedup_rule.md",
+          "heading": "原始规模"
+        }
+      ],
+      "embedding_top3": [
+        "去重规则与重复数据处理 > 容易混淆的地方",
+        "去重规则与重复数据处理 > 重复情况",
+        "去重规则与重复数据处理 > 原始规模"
+      ],
+      "embedding_top1_score": 0.837102,
+      "embedding_hit@3": false,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "项目概览与回答边界 > 数据是什么",
+        "数据来源、许可与版本边界 > 对局数据",
+        "去重规则与重复数据处理 > 重复情况"
+      ],
+      "rerank_scores": [
+        0.952442,
+        0.869205,
+        0.834642
+      ],
+      "rerank_top1_score": 0.952442,
+      "reranked_hit@3": false,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        10,
+        7
+      ]
+    },
+    {
+      "id": "first_blood_two_rates",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_metrics_ban_event.md",
+          "heading": "两个分母不要混淆"
+        }
+      ],
+      "embedding_top3": [
+        "数据审计结果与字段取值分布 > 首个事件字段取值分布",
+        "数据字段定义与取值域 > 胜负与首个事件的取值编码",
+        "Ban 率与首个事件指标口径 > 首次事件方胜率"
+      ],
+      "embedding_top1_score": 0.764839,
+      "embedding_hit@3": false,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "数据审计结果与字段取值分布 > 首个事件字段取值分布",
+        "Ban 率与首个事件指标口径 > 两个分母不要混淆",
+        "核心指标定义与计算口径 > 条件队伍胜率"
+      ],
+      "rerank_scores": [
+        0.888555,
+        0.837226,
+        0.810118
+      ],
+      "rerank_top1_score": 0.888555,
+      "reranked_hit@3": true,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        2
+      ]
+    },
+    {
+      "id": "color_side_guardrail",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_overview.md",
+          "heading": "颜色方（蓝方/红方）问题"
+        }
+      ],
+      "embedding_top3": [
+        "项目概览与回答边界 > 回答边界（必须遵守） > 颜色方（蓝方/红方）问题",
+        "数据字段定义与取值域 > 字段语义与颜色方约定",
+        "项目概览与回答边界 > 回答边界（必须遵守）"
+      ],
+      "embedding_top1_score": 0.820623,
+      "embedding_hit@3": true,
+      "embedding_hit@1": true,
+      "reranked_top3": [
+        "数据字段定义与取值域 > 字段语义与颜色方约定",
+        "项目概览与回答边界 > 回答边界（必须遵守）",
+        "项目概览与回答边界 > 回答边界（必须遵守） > 颜色方（蓝方/红方）问题"
+      ],
+      "rerank_scores": [
+        0.964309,
+        0.899383,
+        0.872419
+      ],
+      "rerank_top1_score": 0.964309,
+      "reranked_hit@3": true,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        3
+      ]
+    },
+    {
+      "id": "unsupported_jungle_current_meta",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_overview.md",
+          "heading": "边界外的替代指标"
+        }
+      ],
+      "embedding_top3": [
+        "项目概览与回答边界 > 关键提醒",
+        "项目概览与回答边界 > 回答边界（必须遵守） > 边界外的替代指标",
+        "版本冲突样本：数据期间新加入的英雄 > 引用要求"
+      ],
+      "embedding_top1_score": 0.666072,
+      "embedding_hit@3": true,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "项目概览与回答边界 > 回答边界（必须遵守）",
+        "项目概览与回答边界 > 回答边界（必须遵守） > 边界外的替代指标",
+        "项目概览与回答边界 > 关键提醒"
+      ],
+      "rerank_scores": [
+        0.880995,
+        0.842805,
+        0.84078
+      ],
+      "rerank_top1_score": 0.880995,
+      "reranked_hit@3": true,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        2
+      ]
+    },
+    {
+      "id": "duration_definition",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_metrics_core.md",
+          "heading": "平均对局时长"
+        }
+      ],
+      "embedding_top3": [
+        "核心指标定义与计算口径 > 平均对局时长",
+        "核心指标定义与计算口径 > 对局数",
+        "核心指标定义与计算口径"
+      ],
+      "embedding_top1_score": 0.879927,
+      "embedding_hit@3": true,
+      "embedding_hit@1": true,
+      "reranked_top3": [
+        "核心指标定义与计算口径 > 平均对局时长",
+        "核心指标定义与计算口径",
+        "核心指标定义与计算口径 > 对局数"
+      ],
+      "rerank_scores": [
+        0.978989,
+        0.71922,
+        0.566013
+      ],
+      "rerank_top1_score": 0.978989,
+      "reranked_hit@3": true,
+      "reranked_hit@1": true,
+      "expected_rank_after": [
+        1
+      ]
+    },
+    {
+      "id": "event_field_encoding",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_field_reference.md",
+          "heading": "胜负与首个事件的取值编码"
+        }
+      ],
+      "embedding_top3": [
+        "数据字段定义与取值域 > 胜负与首个事件的取值编码",
+        "数据审计结果与字段取值分布 > 首个事件字段取值分布",
+        "数据字段定义与取值域 > 字段语义与颜色方约定"
+      ],
+      "embedding_top1_score": 0.839076,
+      "embedding_hit@3": true,
+      "embedding_hit@1": true,
+      "reranked_top3": [
+        "数据字段定义与取值域 > 胜负与首个事件的取值编码",
+        "数据审计结果与字段取值分布 > 首个事件字段取值分布",
+        "数据审计结果与字段取值分布 > winner` 取值分布"
+      ],
+      "rerank_scores": [
+        0.914745,
+        0.798978,
+        0.703624
+      ],
+      "rerank_top1_score": 0.914745,
+      "reranked_hit@3": true,
+      "reranked_hit@1": true,
+      "expected_rank_after": [
+        1
+      ]
+    },
+    {
+      "id": "historical_dataset_boundary",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/meta_dataset_provenance.md",
+          "heading": "边界声明"
+        }
+      ],
+      "embedding_top3": [
+        "项目概览与回答边界 > 数据是什么",
+        "数据来源、许可与版本边界 > 对局数据",
+        "数据来源、许可与版本边界 > 边界声明"
+      ],
+      "embedding_top1_score": 0.717392,
+      "embedding_hit@3": true,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "项目概览与回答边界 > 数据是什么",
+        "数据来源、许可与版本边界 > 对局数据",
+        "数据字段定义与取值域 > 数据时间范围与时间戳"
+      ],
+      "rerank_scores": [
+        0.809855,
+        0.783794,
+        0.75074
+      ],
+      "rerank_top1_score": 0.809855,
+      "reranked_hit@3": false,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        6
+      ]
+    },
+    {
+      "id": "summoner_spell_coverage",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_field_reference.md",
+          "heading": "英雄与召唤师技能"
+        }
+      ],
+      "embedding_top3": [
+        "召唤师技能目录（7.17.1）与数据中的实际使用",
+        "数据字段定义与取值域 > 英雄与召唤师技能",
+        "召唤师技能目录（7.17.1）与数据中的实际使用 > 本数据集中实际出现的技能"
+      ],
+      "embedding_top1_score": 0.779677,
+      "embedding_hit@3": true,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "召唤师技能目录（7.17.1）与数据中的实际使用",
+        "数据字段定义与取值域 > 英雄与召唤师技能",
+        "项目概览与回答边界 > 关键提醒"
+      ],
+      "rerank_scores": [
+        0.97238,
+        0.939893,
+        0.925626
+      ],
+      "rerank_top1_score": 0.97238,
+      "reranked_hit@3": true,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        2
+      ]
+    },
+    {
+      "id": "champion_id_sentinel",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/project_champion_name_mapping.md",
+          "heading": "CSV 中的哨兵值"
+        }
+      ],
+      "embedding_top3": [
+        "数据字段定义与取值域 > 禁用",
+        "英雄名称映射与版本边界 > CSV 中的哨兵值",
+        "Ban 率与首个事件指标口径 > 英雄禁用场数"
+      ],
+      "embedding_top1_score": 0.761062,
+      "embedding_hit@3": true,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "英雄名称映射与版本边界 > CSV 中的哨兵值",
+        "Ban 率与首个事件指标口径 > 英雄禁用场数",
+        "数据字段定义与取值域 > 禁用"
+      ],
+      "rerank_scores": [
+        0.925182,
+        0.910141,
+        0.877244
+      ],
+      "rerank_top1_score": 0.925182,
+      "reranked_hit@3": true,
+      "reranked_hit@1": true,
+      "expected_rank_after": [
+        1
+      ]
+    },
+    {
+      "id": "urgot_rename_version",
+      "class": "relevant",
+      "expected": [
+        {
+          "source": "kbase/conflict_urgot_rename.md",
+          "heading": "事实"
+        }
+      ],
+      "embedding_top3": [
+        "版本冲突样本：英雄 ID 6（厄加特）的更名 > 事实",
+        "版本冲突样本：英雄 ID 6（厄加特）的更名 > 引用要求",
+        "版本冲突样本：同一英雄在不同补丁的名称与称号"
+      ],
+      "embedding_top1_score": 0.799586,
+      "embedding_hit@3": true,
+      "embedding_hit@1": true,
+      "reranked_top3": [
+        "英雄名称映射与版本边界 > 版本边界（必须说明）",
+        "版本冲突样本：英雄 ID 6（厄加特）的更名 > 事实",
+        "版本冲突样本：英雄 ID 6（厄加特）的更名 > 为什么这是重要的冲突样本"
+      ],
+      "rerank_scores": [
+        0.96112,
+        0.941174,
+        0.888605
+      ],
+      "rerank_top1_score": 0.96112,
+      "reranked_hit@3": true,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        2
+      ]
+    },
+    {
+      "id": "python_binary_search",
+      "class": "offtopic",
+      "expected": [
+        {
+          "source": "kbase/offtopic_python_binary_search.md",
+          "heading": "实现"
+        }
+      ],
+      "embedding_top3": [
+        "Python 二分查找实现与复杂度",
+        "Python 二分查找实现与复杂度 > 时间复杂度",
+        "Python 二分查找实现与复杂度 > 实现"
+      ],
+      "embedding_top1_score": 0.937421,
+      "embedding_hit@3": true,
+      "embedding_hit@1": true,
+      "reranked_top3": [
+        "Python 二分查找实现与复杂度 > 实现",
+        "Python 二分查找实现与复杂度 > 时间复杂度",
+        "Python 二分查找实现与复杂度 > 常见陷阱"
+      ],
+      "rerank_scores": [
+        0.919069,
+        0.892558,
+        0.654306
+      ],
+      "rerank_top1_score": 0.919069,
+      "reranked_hit@3": true,
+      "reranked_hit@1": true,
+      "expected_rank_after": [
+        1
+      ]
+    },
+    {
+      "id": "tokyo_weather",
+      "class": "offtopic",
+      "expected": [
+        {
+          "source": "kbase/offtopic_tokyo_weather.md",
+          "heading": "气候概况"
+        }
+      ],
+      "embedding_top3": [
+        "东京气候概况与天气预报渠道 > 气候概况",
+        "东京气候概况与天气预报渠道 > 年降水量",
+        "东京气候概况与天气预报渠道"
+      ],
+      "embedding_top1_score": 0.85146,
+      "embedding_hit@3": true,
+      "embedding_hit@1": true,
+      "reranked_top3": [
+        "东京气候概况与天气预报渠道 > 年降水量",
+        "东京气候概况与天气预报渠道 > 气候概况",
+        "东京气候概况与天气预报渠道 > 如何获取实时天气"
+      ],
+      "rerank_scores": [
+        0.845273,
+        0.825103,
+        0.288406
+      ],
+      "rerank_top1_score": 0.845273,
+      "reranked_hit@3": true,
+      "reranked_hit@1": true,
+      "expected_rank_after": [
+        1
+      ]
+    },
+    {
+      "id": "coffee_descaling",
+      "class": "offtopic",
+      "expected": [
+        {
+          "source": "kbase/offtopic_coffee_descaling.md",
+          "heading": "操作步骤"
+        }
+      ],
+      "embedding_top3": [
+        "家用咖啡机除垢与清洁",
+        "家用咖啡机除垢与清洁 > 除垢频率",
+        "家用咖啡机除垢与清洁 > 操作步骤"
+      ],
+      "embedding_top1_score": 0.916627,
+      "embedding_hit@3": true,
+      "embedding_hit@1": false,
+      "reranked_top3": [
+        "家用咖啡机除垢与清洁 > 日常清洁",
+        "家用咖啡机除垢与清洁 > 操作步骤",
+        "家用咖啡机除垢与清洁 > 除垢频率"
+      ],
+      "rerank_scores": [
+        0.945283,
+        0.90609,
+        0.875348
+      ],
+      "rerank_top1_score": 0.945283,
+      "reranked_hit@3": true,
+      "reranked_hit@1": false,
+      "expected_rank_after": [
+        2
+      ]
+    },
+    {
+      "id": "pro_match_result",
+      "class": "unanswerable",
+      "expected": [],
+      "embedding_top3": [
+        "项目概览与回答边界",
+        "项目概览与回答边界 > 回答边界（必须遵守）",
+        "数据审计结果与字段取值分布 > winner` 取值分布"
+      ],
+      "embedding_top1_score": 0.492077,
+      "reranked_top3": [
+        "数据审计结果与字段取值分布 > winner` 取值分布",
+        "数据来源、许可与版本边界 > 对局数据",
+        "项目概览与回答边界 > 数据是什么"
+      ],
+      "rerank_scores": [
+        0.370249,
+        0.319731,
+        0.316075
+      ],
+      "rerank_top1_score": 0.370249
+    },
+    {
+      "id": "skin_price",
+      "class": "unanswerable",
+      "expected": [],
+      "embedding_top3": [
+        "装备目录（7.17.1） > 分类：暴击（4 件） > 无尽之刃",
+        "补丁时间线：7.11.1 至 7.18.1 的英雄池变化 > 同时期其他变化 > 英雄 ID 6：Urgot",
+        "装备目录（7.17.1） > 分类：攻击（24 件） > 德拉克萨的暮刃"
+      ],
+      "embedding_top1_score": 0.500265,
+      "reranked_top3": [
+        "装备目录（7.17.1） > 分类：暴击（4 件） > 无尽之刃",
+        "装备目录（7.17.1） > 分类：护甲（13 件） > 守护天使",
+        "装备目录（7.17.1） > 分类：护甲穿透（4 件） > 最后的轻语"
+      ],
+      "rerank_scores": [
+        0.366734,
+        0.355305,
+        0.353902
+      ],
+      "rerank_top1_score": 0.366734
+    },
+    {
+      "id": "player_salary",
+      "class": "unanswerable",
+      "expected": [],
+      "embedding_top3": [
+        "英雄机制与技能（7.17.1）第 2 批：ID 7-12 > 末日使者（费德提克）",
+        "英雄机制与技能（7.17.1）第 22 批：ID 266-421 > 虚空遁地兽（雷克塞）",
+        "项目概览与回答边界 > 数据是什么"
+      ],
+      "embedding_top1_score": 0.431633,
+      "reranked_top3": [
+        "数据来源、许可与版本边界 > 对局数据",
+        "英雄机制与技能（7.17.1）第 4 批：ID 19-24 > 赏金猎人（厄运小姐）",
+        "项目概览与回答边界 > 数据是什么"
+      ],
+      "rerank_scores": [
+        0.380795,
+        0.375525,
+        0.37051
+      ],
+      "rerank_top1_score": 0.380795
+    },
+    {
+      "id": "patch_schedule",
+      "class": "unanswerable",
+      "expected": [],
+      "embedding_top3": [
+        "版本冲突样本：同一英雄在不同补丁的名称与称号 > 冲突总览",
+        "版本冲突样本：英雄 ID 6（厄加特）的更名 > 引用要求",
+        "补丁时间线：7.11.1 至 7.18.1 的英雄池变化 > 各补丁英雄数量"
+      ],
+      "embedding_top1_score": 0.633418,
+      "reranked_top3": [
+        "补丁时间线：7.11.1 至 7.18.1 的英雄池变化 > 同时期其他变化 > 英雄 ID 6：Urgot",
+        "补丁时间线：7.11.1 至 7.18.1 的英雄池变化 > 期间新加入的英雄 > 英雄 ID 141：影流之镰",
+        "补丁时间线：7.11.1 至 7.18.1 的英雄池变化 > 各补丁英雄数量"
+      ],
+      "rerank_scores": [
+        0.618531,
+        0.56941,
+        0.562694
+      ],
+      "rerank_top1_score": 0.618531
+    },
+    {
+      "id": "car_tire_repair",
+      "class": "unanswerable",
+      "expected": [],
+      "embedding_top3": [
+        "评测方法与判分口径 > 当前评测的已知缺口",
+        "评测方法与判分口径 > 自动检查的局限",
+        "英雄机制与技能（7.17.1）第 22 批：ID 266-421 > 虚空遁地兽（雷克塞） > 使用提示"
+      ],
+      "embedding_top1_score": 0.386019,
+      "reranked_top3": [
+        "英雄机制与技能（7.17.1）第 22 批：ID 266-421 > 虚空遁地兽（雷克塞）",
+        "评测方法与判分口径 > 当前评测的已知缺口",
+        "英雄机制与技能（7.17.1）第 19 批：ID 141-161 > 迷失之牙（纳尔）"
+      ],
+      "rerank_scores": [
+        0.283994,
+        0.256867,
+        0.25122
+      ],
+      "rerank_top1_score": 0.283994
+    },
+    {
+      "id": "income_tax",
+      "class": "unanswerable",
+      "expected": [],
+      "embedding_top3": [
+        "装备目录（7.17.1） > 分类：主动（14 件） > 海克斯科技枪刃",
+        "去重规则与重复数据处理 > 原始规模",
+        "数据字段定义与取值域 > 明确不存在的字段"
+      ],
+      "embedding_top1_score": 0.342042,
+      "reranked_top3": [
+        "知识库结构与分类约定 > 元数据字段",
+        "英雄机制与技能（7.17.1）第 22 批：ID 266-421 > 虚空遁地兽（雷克塞）",
+        "英雄机制与技能（7.17.1）第 22 批：ID 266-421"
+      ],
+      "rerank_scores": [
+        0.374488,
+        0.256284,
+        0.236498
+      ],
+      "rerank_top1_score": 0.374488
+    }
+  ]
+}

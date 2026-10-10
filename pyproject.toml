@@ -1,0 +1,29 @@
+[project]
+name = "lol-ranked-data-agent"
+version = "0.1.0"
+description = "A League of Legends ranked data analysis agent with RAG"
+requires-python = ">=3.14,<3.15"
+readme = "README.md"
+dependencies = [
+    "langgraph==1.2.14",
+    "langchain-openai==1.6.7",
+    "python-dotenv==1.2.4",
+    # Imported directly by lol_agent.embeddings, so it must not rely on being a
+    # transitive dependency of langchain-openai.
+    "openai>=3.26.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# -p no:cacheprovider: the .pytest_cache directory is not writable in a confined
+# sandbox, which otherwise turns every run into an error.
+addopts = "-q -p no:cacheprovider"
+pythonpath = ["src"]

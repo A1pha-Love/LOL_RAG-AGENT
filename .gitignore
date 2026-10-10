@@ -1,0 +1,30 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# --- Secrets (never commit) ---
+.env
+.env.*
+
+# --- Data: raw inputs and regenerable payloads ---
+# The ranked-match CSV is the project's dataset; the Data Dragon snapshots are
+# 32 MB of official data that scripts/fetch_dimension_data.py can re-download.
+ShuJuYuan/*.csv
+ShuJuYuan/ddragon/
+
+# --- Derived build artefacts ---
+# knowledge.db is rebuilt by scripts/index_knowledge.py; the query-vector cache
+# is machine-local and regenerated on demand.
+*.db
+*.duckdb
+reports/*.csv
+.cache/
+
+# --- Local tooling state ---
+.acl-recovery/
+.probe_sources/
+Start-LoL-Data-Agent.lnk

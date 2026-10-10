@@ -1,0 +1,42 @@
+{
+  "generated_by": "scripts/build_dimension_mappings.py",
+  "generated_at_retrieved_from": "2026-10-09T16:29:35+00:00",
+  "purpose": "Map the CSV summoner-spell ID columns (t{1,2}_champ{1..5}_sum{1,2}) to zh_CN names.",
+  "license": "Riot Data Dragon static data; dataset companion files are CC0.",
+  "sources": [
+    "ShuJuYuan/ddragon/<patch>/zh_CN/summoner.json",
+    "ShuJuYuan/summoner_spell_info.json"
+  ],
+  "id_to_name": {
+    "1": "净化",
+    "3": "虚弱",
+    "4": "闪现",
+    "6": "幽灵疾步",
+    "7": "治疗术",
+    "11": "惩戒",
+    "12": "传送",
+    "13": "清晰术",
+    "14": "引燃",
+    "21": "屏障",
+    "30": "护驾！",
+    "31": "魄罗投掷",
+    "32": "标记",
+    "33": "枢纽攻防战：围城武器栏",
+    "34": "枢纽攻防战：围城武器栏",
+    "35": "已禁用召唤师技能",
+    "36": "已禁用召唤师技能"
+  },
+  "csv_ids_used": {
+    "1": 3112,
+    "3": 83886,
+    "4": 499860,
+    "6": 14183,
+    "7": 107133,
+    "11": 102183,
+    "12": 108452,
+    "14": 87504,
+    "21": 14747
+  },
+  "csv_coverage": "9/9",
+  "unmapped_csv_ids": []
+}

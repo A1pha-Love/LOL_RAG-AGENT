@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from dotenv import load_dotenv
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, MessagesState, StateGraph
@@ -15,6 +16,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from . import tools as data_tools
 from .config import chat_base_url, require_api_key
+from .conversation import SessionStore, Turn, rewrite_query
 from .knowledge import KnowledgeAPIError, KnowledgeIndexError, search_knowledge
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -87,11 +89,20 @@ def search_project_knowledge(query: str, top_k: int = 8) -> dict[str, object]:
 
     Returns each hit with its source path, heading path, category and version so
     the answer can cite precisely.
+
+    In a multi-turn session the query is rewritten first (see
+    ``lol_agent.conversation``) so that a follow-up such as "他的胜率呢" is
+    searched as a self-contained question. The model does not need to know this:
+    it passes the user's wording and the rewrite is applied underneath.
     """
+    effective_query = current_retrieval_query(query)
     try:
-        return {"results": search_knowledge(query, top_k)}
+        return {
+            "results": search_knowledge(effective_query, top_k),
+            "retrieval_query": effective_query,
+        }
     except (KnowledgeAPIError, KnowledgeIndexError, ValueError) as exc:
-        return {"error": str(exc), "results": []}
+        return {"error": str(exc), "results": [], "retrieval_query": effective_query}
 
 
 AGENT_TOOLS = [
@@ -106,6 +117,47 @@ AGENT_TOOLS = [
 ]
 
 
+# --------------------------------------------------------------------------
+# per-turn runtime (multi-turn only)
+# --------------------------------------------------------------------------
+
+@dataclass
+class TurnContext:
+    """Mutable state for the turn currently being answered.
+
+    A plain attribute rather than LangGraph state because it is produced by a
+    pre-step of the turn, not by the graph, and because it must be readable from
+    inside a tool call.
+    """
+
+    session_id: str
+    history: list[Turn] = field(default_factory=list)
+    retrieval_query: str | None = None
+    rewrite_fallback: str | None = None
+    rewrite_done: bool = False
+    tool_calls: list[str] = field(default_factory=list)
+
+    def prepare(self, question: str) -> None:
+        """Rewrite the retrieval query once per turn."""
+        if self.rewrite_done:
+            return
+        self.rewrite_done = True
+        rewritten, fallback = rewrite_query(question, self.history)
+        self.retrieval_query = rewritten
+        self.rewrite_fallback = fallback
+
+
+_TURN: TurnContext | None = None
+
+
+def current_retrieval_query(question: str) -> str:
+    """The query retrieval should use, applying the rewrite when one exists."""
+    if _TURN is None:
+        return question
+    _TURN.prepare(question)
+    return _TURN.retrieval_query or question
+
+
 def build_agent():
     """Compile the single-agent LangGraph; API calls happen only on invocation."""
     base_url = chat_base_url()
@@ -118,7 +170,14 @@ def build_agent():
 
     def call_model(state: MessagesState) -> dict:
         messages = [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
-        return {"messages": [model.invoke(messages)]}
+        response = model.invoke(messages)
+        # Record which tools this turn used, for the session transcript.
+        if _TURN is not None:
+            for call in getattr(response, "tool_calls", []) or []:
+                name = call.get("name")
+                if name and name not in _TURN.tool_calls:
+                    _TURN.tool_calls.append(name)
+        return {"messages": [response]}
 
     graph = StateGraph(MessagesState)
     graph.add_node("agent", call_model)
@@ -129,12 +188,76 @@ def build_agent():
     return graph.compile()
 
 
+def _final_text(result: dict) -> str:
+    content = result["messages"][-1].content
+    return content if isinstance(content, str) else str(content)
+
+
 def ask(question: str) -> str:
-    """Run one question through the compiled graph and return the final text."""
+    """Answer one question with no conversation history.
+
+    Kept for single-shot use (CLI, evaluation). Multi-turn callers should use
+    ``ask_in_session``.
+    """
     if not question.strip():
         raise ValueError("Question cannot be empty")
     result = build_agent().invoke({"messages": [HumanMessage(content=question)]})
-    content = result["messages"][-1].content
-    if isinstance(content, str):
-        return content
-    return str(content)
+    return _final_text(result)
+
+
+def ask_in_session(
+    question: str,
+    session_id: str,
+    *,
+    store: SessionStore | None = None,
+) -> dict[str, Any]:
+    """Answer a question in the context of an existing session.
+
+    The transcript is loaded, the retrieval query is rewritten against it, and
+    both the question and the answer are persisted. LangGraph itself stays
+    stateless per call: the transcript is rebuilt from the store so that a later
+    process can resume the same session.
+    """
+    global _TURN
+    if not question.strip():
+        raise ValueError("Question cannot be empty")
+
+    store = store or SessionStore()
+    session = store.get_session(session_id)
+    context = TurnContext(session_id=session_id, history=session.history())
+
+    # Rebuild the transcript, including assistant replies: the model needs its
+    # own earlier answers to interpret "他的胜率呢"-style follow-ups.
+    messages: list[Any] = []
+    for turn in session.turns:
+        if turn.role == "user":
+            messages.append(HumanMessage(content=turn.content))
+        else:
+            messages.append(AIMessage(content=turn.content))
+
+    # The runtime must be installed *before* the graph runs: it carries the
+    # rewritten retrieval query and collects which tools the turn used.
+    previous, _TURN = _TURN, context
+    try:
+        context.prepare(question)
+        result = build_agent().invoke({"messages": [*messages, HumanMessage(content=question)]})
+        answer = _final_text(result)
+    finally:
+        _TURN = previous
+
+    store.append_turn(session_id, "user", question)
+    store.append_turn(
+        session_id,
+        "assistant",
+        answer,
+        retrieval_query=context.retrieval_query,
+        tool_calls=context.tool_calls,
+    )
+
+    return {
+        "session_id": session_id,
+        "answer": answer,
+        "retrieval_query": context.retrieval_query,
+        "rewrite_fallback": context.rewrite_fallback,
+        "tool_calls": list(context.tool_calls),
+    }

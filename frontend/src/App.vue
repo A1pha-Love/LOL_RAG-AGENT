@@ -90,6 +90,7 @@ function onSelectTurn(id: number): void {
         @ask="onAsk"
         @stop="store.stop()"
         @select-turn="onSelectTurn"
+        @retry="(id: number) => store.retry(id)"
       />
 
       <RetrievalPanel v-model:expanded="expandedChunk" :view="retrievalView" />

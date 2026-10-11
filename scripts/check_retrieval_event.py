@@ -9,22 +9,30 @@ import urllib.request
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://127.0.0.1:8077"
 QUESTION = sys.argv[2] if len(sys.argv) > 2 else "Ban 率按什么口径计算？同一英雄同场多次禁用怎么算？"
 
-create = urllib.request.Request(
-    BASE + "/api/sessions", data=b"{}", headers={"Content-Type": "application/json"}, method="POST"
-)
-session_id = json.loads(urllib.request.urlopen(create, timeout=20).read())["session_id"]
+# Python picks up this machine's system proxy from the registry, and urllib does
+# not honour Windows' ProxyOverride list, so requests to 127.0.0.1 would
+# otherwise be routed through the proxy and intermittently fail. Keep them direct.
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+def post(url: str, payload: dict, *, timeout: int = 180):
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    return OPENER.open(request, timeout=timeout)
+
+
+session_id = json.loads(post(BASE + "/api/sessions", {}, timeout=20).read())["session_id"]
 print(f"session: {session_id}")
 print(f"question: {QUESTION}")
 print()
 
-body = json.dumps({"question": QUESTION, "session_id": session_id}).encode("utf-8")
-request = urllib.request.Request(
-    BASE + "/api/sessions/ask", data=body, headers={"Content-Type": "application/json"}, method="POST"
-)
-
 chunks: list[dict] = []
 counts: dict[str, int] = {}
-for raw in urllib.request.urlopen(request, timeout=180):
+for raw in post(BASE + "/api/sessions/ask", {"question": QUESTION, "session_id": session_id}):
     line = raw.decode("utf-8", "replace").rstrip("\n")
     if not line.startswith("data:"):
         continue

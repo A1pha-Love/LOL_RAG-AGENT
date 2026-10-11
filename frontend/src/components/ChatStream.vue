@@ -19,6 +19,7 @@ const emit = defineEmits<{
   (event: 'ask', question: string): void
   (event: 'stop'): void
   (event: 'select-turn', id: number): void
+  (event: 'retry', id: number): void
 }>()
 
 const draft = ref('')
@@ -85,6 +86,7 @@ watch(
         :turn="turn"
         :selected="turn.id === selectedTurnId"
         @select="emit('select-turn', turn.id)"
+        @retry="emit('retry', turn.id)"
       />
     </div>
 

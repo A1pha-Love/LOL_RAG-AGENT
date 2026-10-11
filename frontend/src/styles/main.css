@@ -1,27 +1,31 @@
 /**
- * Theme tokens.
+ * Theme tokens — warm reading palette.
  *
- * One dark theme, defined as variables so the palette can be swapped in a single
- * place. Values are deliberately low-contrast on the surfaces and high-contrast
- * on text: this is a reading-heavy tool (long Chinese answers, numeric tables),
- * so legibility matters more than visual punch.
+ * Answers here are long Chinese prose full of numbers and tables, so the design
+ * goal is sustained legibility rather than visual punch: warm neutral surfaces
+ * (cool blue-grey fatigues the eye over long passages), a single low-saturation
+ * terracotta accent, and generous line height for CJK text.
+ *
+ * Everything is a variable, so the palette can be swapped here alone — no
+ * component changes. Cooler alternatives: set --surface* to #14161b/#1b1e25/
+ * #242832 and --accent to #6ea8fe for the previous blue scheme.
  */
 
 :root {
-  --surface: #14161b;
-  --surface-2: #1b1e25;
-  --surface-3: #242832;
-  --border: #2b3040;
-  --text: #e6e9f0;
-  --text-muted: #a8b0c2;
-  --text-faint: #6f7891;
-  --accent: #6ea8fe;
-  --accent-soft: rgba(110, 168, 254, 0.13);
-  --accent-border: rgba(110, 168, 254, 0.38);
-  --ok: #4ec9a0;
-  --warn: #e0b050;
-  --danger: #f07178;
-  --code-bg: #0f1116;
+  --surface: #1a1715;
+  --surface-2: #211d1a;
+  --surface-3: #2b2622;
+  --border: #3a332d;
+  --text: #ece7e1;
+  --text-muted: #b3a99e;
+  --text-faint: #8a7f73;
+  --accent: #d97757;
+  --accent-soft: rgba(217, 119, 87, 0.14);
+  --accent-border: rgba(217, 119, 87, 0.4);
+  --ok: #7fae7a;
+  --warn: #d9a441;
+  --danger: #e07a5f;
+  --code-bg: #15120f;
   /* CJK-aware stack: the fallbacks matter, since answers are mostly Chinese. */
   --sans: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC',
     'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
@@ -44,7 +48,8 @@ body {
   color: var(--text);
   font-family: var(--sans);
   font-size: 13px;
-  line-height: 1.6;
+  /* 1.75 rather than 1.5: CJK glyphs are denser, so they need more leading. */
+  line-height: 1.75;
   -webkit-font-smoothing: antialiased;
 }
 

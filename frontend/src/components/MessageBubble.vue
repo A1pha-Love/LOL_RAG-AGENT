@@ -15,7 +15,10 @@ const props = defineProps<{
   selected: boolean
 }>()
 
-const emit = defineEmits<{ (event: 'select'): void }>()
+const emit = defineEmits<{
+  (event: 'select'): void
+  (event: 'retry'): void
+}>()
 
 /** Escape first, then apply inline formatting — never the other way round. */
 function escapeHtml(text: string): string {
@@ -177,7 +180,10 @@ const blocks = computed(() => parse(props.turn.answer))
       </div>
     </div>
 
-    <p v-if="turn.error" class="error">⚠ {{ turn.error }}</p>
+    <p v-if="turn.error" class="error">
+      <span>⚠ {{ turn.error }}</span>
+      <button v-if="turn.timedOut" class="retry" @click.stop="emit('retry')">重试</button>
+    </p>
 
     <footer v-if="!turn.streaming" class="foot">
       <span v-if="turn.seconds">{{ turn.seconds }}s</span>
@@ -340,9 +346,26 @@ const blocks = computed(() => parse(props.turn.answer))
 }
 
 .error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 8px 0 0 30px;
   font-size: 12.5px;
   color: var(--danger);
+}
+
+.retry {
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 45%, transparent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--danger);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.retry:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .foot {

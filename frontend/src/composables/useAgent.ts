@@ -12,6 +12,7 @@
 
 import { computed, reactive } from 'vue'
 import { api, streamTurn } from '@/lib/api'
+import { StreamTimeoutError, withIdleTimeout } from '@/lib/timeout'
 import type {
   HealthReport,
   RetrievedChunk,
@@ -26,6 +27,8 @@ export interface UiTurn {
   answer: string
   streaming: boolean
   error: string | null
+  /** Set when the stream stalled; the UI offers a one-click retry. */
+  timedOut: boolean
   status: string | null
   retrievalQuery: string | null
   rewriteFallback: string | null
@@ -134,12 +137,19 @@ async function ask(question: string): Promise<void> {
   controller = new AbortController()
 
   try {
-    for await (const event of streamTurn(trimmed, state.activeSessionId, controller.signal)) {
+    const events = streamTurn(trimmed, state.activeSessionId, controller.signal)
+    for await (const event of withIdleTimeout(events, () => controller?.abort())) {
       applyEvent(turn, event)
     }
   } catch (error) {
-    // An aborted fetch is a deliberate stop, not a failure worth reporting.
-    if ((error as Error).name === 'AbortError') {
+    if (error instanceof StreamTimeoutError) {
+      // Keep the question on screen and offer a retry: dropping the turn would
+      // make the user retype it, and a silent disappearance looks like a bug.
+      turn.timedOut = true
+      turn.error = error.message
+      state.banner = null
+    } else if ((error as Error).name === 'AbortError') {
+      // A deliberate stop, not a failure worth reporting.
       turn.error = null
     } else {
       turn.error = (error as Error).message
@@ -186,6 +196,15 @@ function applyEvent(turn: UiTurn, event: StreamEvent): void {
   }
 }
 
+/** Re-ask a question that failed, replacing the failed turn. */
+async function retry(turnId: number): Promise<void> {
+  const index = state.turns.findIndex((turn) => turn.id === turnId)
+  if (index === -1) return
+  const question = state.turns[index].question
+  state.turns.splice(index, 1)
+  await ask(question)
+}
+
 function newTurn(question: string, streaming: boolean): UiTurn {
   return {
     id: nextTurnId++,
@@ -193,6 +212,7 @@ function newTurn(question: string, streaming: boolean): UiTurn {
     answer: '',
     streaming,
     error: null,
+    timedOut: false,
     status: null,
     retrievalQuery: null,
     rewriteFallback: null,
@@ -212,6 +232,7 @@ export const store = {
   startNewSession,
   removeSession,
   ask,
+  retry,
   stop,
 }
 

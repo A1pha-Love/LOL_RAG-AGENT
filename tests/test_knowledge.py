@@ -215,3 +215,75 @@ def test_index_metadata_records_the_chunker_version() -> None:
     with sqlite3.connect(kb.INDEX_PATH) as connection:
         meta = {k: v for k, v in connection.execute("SELECT key, value FROM index_meta")}
     assert meta.get("chunker_version") == kb.CHUNKER_VERSION
+
+
+# --------------------------------------------------------------------------
+# distractor exclusion
+# --------------------------------------------------------------------------
+
+def test_distractor_categories_are_named_not_magic_values() -> None:
+    """The excluded set must be explicit, since it changes what users can retrieve."""
+    assert kb.NON_CONTENT_CATEGORIES == {"offtopic", "noise"}
+    assert kb.NON_CONTENT_CATEGORIES <= kb.VALID_CATEGORIES
+
+
+@index_exists
+def test_search_excludes_distractor_documents_by_default() -> None:
+    """Regression: distractors used to be ranked alongside real content.
+
+    Measured top-1 rerank scores overlap almost completely (offtopic 0.8453–0.9453
+    versus relevant 0.8099–0.9790), so no score cutoff can separate them. Exclusion
+    is therefore by category, and this asserts the wiring rather than the score.
+    """
+    hits = kb.search_knowledge("家用咖啡机如何除垢？", top_k=10)
+    assert all(hit["category"] not in kb.NON_CONTENT_CATEGORIES for hit in hits)
+
+
+@index_exists
+def test_distractors_can_still_be_requested_for_calibration() -> None:
+    """Calibration needs them, so the escape hatch must keep working.
+
+    Without this, the overlap that justifies exclusion could never be re-measured.
+    """
+    hits = kb.search_knowledge("家用咖啡机如何除垢？", top_k=10, include_noise=True)
+    categories = {hit["category"] for hit in hits}
+    assert categories & kb.NON_CONTENT_CATEGORIES, (
+        "include_noise=True no longer surfaces distractors; calibration would silently break"
+    )
+
+
+@index_exists
+def test_excluding_distractors_does_not_shorten_the_result_list() -> None:
+    """A distractor must not occupy a top_k slot.
+
+    Excluding after ranking would return fewer than top_k real hits for a query the
+    distractors dominate; excluding in SQL keeps the list full.
+    """
+    query = "家用咖啡机如何除垢？"  # the distractors' own topic: worst case
+    without = kb.search_knowledge(query, top_k=5, include_below_threshold=True)
+    assert len(without) == 5
+    assert all(hit["category"] not in kb.NON_CONTENT_CATEGORIES for hit in without)
+
+
+@index_exists
+def test_excluding_distractors_does_not_harm_a_real_question() -> None:
+    """The change must not cost recall on an ordinary in-scope question."""
+    hits = kb.search_knowledge("Ban 率以什么为分母？", top_k=8)
+    assert hits, "an in-scope question must still return hits"
+    assert any("ban_event" in str(hit.get("source")) for hit in hits)
+
+
+@index_exists
+def test_category_filter_and_include_noise_are_mutually_exclusive() -> None:
+    """Asking for one distractor category while excluding distractor categories is
+    contradictory; refusing is better than silently picking one."""
+    with pytest.raises(ValueError, match="include_noise"):
+        kb.search_knowledge("咖啡机", category="offtopic", include_noise=True)
+
+
+@index_exists
+def test_an_explicit_distractor_category_is_still_honoured() -> None:
+    """Naming a distractor category is an explicit request, so it must be allowed."""
+    hits = kb.search_knowledge("咖啡机除垢", category="offtopic")
+    assert hits
+    assert all(hit["category"] == "offtopic" for hit in hits)

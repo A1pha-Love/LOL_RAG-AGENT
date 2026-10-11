@@ -71,6 +71,20 @@ RERANK_CANDIDATE_POOL = 20
 MIN_RETRIEVAL_SCORE = 0.3703
 
 VALID_CATEGORIES = {"project", "domain", "conflict", "meta", "offtopic", "noise"}
+
+# Categories that are deliberately not knowledge: official and project documents
+# answer questions, these exist to be *rejected*.
+#
+# `kbase/00_scheme.md` defines offtopic as "与项目无关的干扰文档，仅用于阈值校准",
+# so they are calibration fixtures, not content. Their rerank scores overlap the
+# relevant range almost entirely (0.8453–0.9453 versus 0.8099–0.9790), which means
+# no score cutoff can exclude them without also dropping legitimate hits — the
+# measurement is in evals/retrieval_calibration.jsonl and reproduced by
+# scripts/calibrate_threshold.py. They are therefore excluded structurally, by
+# category, rather than by score.
+#
+# Calibration scripts pass include_noise=True to measure them anyway.
+NON_CONTENT_CATEGORIES = frozenset({"offtopic", "noise"})
 REQUIRED_META = ("doc_id", "title", "category")
 
 
@@ -803,6 +817,7 @@ def search_knowledge(
     *,
     category: str | None = None,
     include_below_threshold: bool = False,
+    include_noise: bool = False,
     rerank_candidates: bool | None = None,
 ) -> list[dict[str, Any]]:
     """Return relevant snippets with source, heading path and metadata.
@@ -811,6 +826,10 @@ def search_knowledge(
     a cross-encoder (`qwen3-rerank`) reorders it against the query. The rerank
     stage is best-effort — if it is unavailable the embedding order is returned
     and `rerank_fallback` records why, rather than failing the request.
+
+    Distractor documents (`offtopic`, `noise`) are excluded by default: they are
+    calibration fixtures, and their scores overlap the relevant range too much for
+    a cutoff to separate them. Pass ``include_noise=True`` only to measure them.
     """
     if not isinstance(query, str) or not query.strip():
         raise ValueError("Search query cannot be empty.")
@@ -818,6 +837,10 @@ def search_knowledge(
         raise ValueError("top_k must be a positive integer.")
     if category is not None and category not in VALID_CATEGORIES:
         raise ValueError(f"category must be one of {sorted(VALID_CATEGORIES)}")
+    if category is not None and include_noise:
+        # Asking for one distractor category while also excluding distractor
+        # categories is contradictory; refusing beats silently honouring one.
+        raise ValueError("category 与 include_noise=True 不能同时使用")
     if not INDEX_PATH.is_file():
         raise KnowledgeIndexError("知识库索引不存在，请先运行 scripts/index_knowledge.py。")
 
@@ -828,14 +851,24 @@ def search_knowledge(
         "SELECT chunk_id, source, heading, heading_path, category, version, source_url, "
         "content, embedding FROM knowledge_chunks"
     )
-    parameters: tuple[Any, ...] = ()
+    conditions: list[str] = []
+    parameters: list[Any] = []
     if category is not None:
-        sql += " WHERE category = ?"
-        parameters = (category,)
+        conditions.append("category = ?")
+        parameters.append(category)
+    elif not include_noise:
+        # Excluded in SQL rather than after ranking: a distractor removed here can
+        # never consume one of the top_k slots, so the caller still receives top_k
+        # real hits instead of a short list.
+        placeholders = ", ".join("?" for _ in NON_CONTENT_CATEGORIES)
+        conditions.append(f"category NOT IN ({placeholders})")
+        parameters.extend(sorted(NON_CONTENT_CATEGORIES))
+    if conditions:
+        sql += " WHERE " + " AND ".join(conditions)
 
     try:
         with sqlite3.connect(INDEX_PATH) as connection:
-            rows = connection.execute(sql, parameters).fetchall()
+            rows = connection.execute(sql, tuple(parameters)).fetchall()
             bm25 = _bm25_scores(connection, query)
     except sqlite3.Error as exc:
         raise KnowledgeIndexError("知识库索引无法读取，请重新运行 scripts/index_knowledge.py 重建。") from exc

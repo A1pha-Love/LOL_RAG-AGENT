@@ -21,3 +21,11 @@
 {"id": "patch_schedule", "query": "下一个版本什么时候更新，会有哪些英雄调整？", "expected_retrieval": [], "class": "unanswerable"}
 {"id": "car_tire_repair", "query": "汽车轮胎漏气后应该如何检查和修补？", "expected_retrieval": [], "class": "unanswerable"}
 {"id": "income_tax", "query": "个人所得税的专项附加扣除如何申报？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "player_rank_distribution", "query": "这份数据里各段位的玩家分布比例是多少，大师以上有多少人？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "role_lane_win_rate", "query": "上单、打野、中单、ADC 和辅助各自的胜率是多少？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "pick_order_position", "query": "每场比赛的选人顺序是什么，几楼先选英雄？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "current_tier_list", "query": "当前版本最强的五个英雄是谁，官方梯队排名如何？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "specific_patch_notes", "query": "7.15 版本对厄加特重做的具体改动内容是哪些？", "expected_retrieval": [{"source": "kbase/conflict_urgot_rename.md", "heading": "事实"}], "class": "relevant", "note": "题面问『具体改动内容』（逐条补丁说明），库内没有该粒度；但 conflict_urgot_rename.md 能支撑「更名发生在 7.14.1→7.15.1、且伴随重做」，因此相关性得分 0.7929 属正确的相关性判断，本用例应按 relevant 计。不可答用例不应把「库里能答一部分」当成「库里答不了」。"}
+{"id": "player_kda_ranking", "query": "这份数据里 KDA 最高的选手是谁，场均击杀多少？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "item_build_win_rate", "query": "第一件出无尽之刃的胜率比出夺萃之镰高多少？", "expected_retrieval": [], "class": "unanswerable"}
+{"id": "future_season_forecast", "query": "根据这些数据预测下个赛季哪些英雄会被削弱？", "expected_retrieval": [], "class": "unanswerable"}

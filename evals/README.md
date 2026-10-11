@@ -9,6 +9,13 @@
 - 禁用对局数、Ban 率及 Top 3
 - 首个事件发生率与取得事件队伍的条件胜率
 - 平均对局时长
+- **召唤师技能出场率、被选时胜率、携带/未携带胜率对比**（含分母口径断言）
+
+**这 15 条用例现在由 `tests/test_eval_cases.py` 在每次离线检查中执行**，不调用模型、不消耗额度。
+此前它们只是文档中的参考值，没有任何代码执行过。`evals/README.md` 要求「参考值应在评测实现前
+独立复核」，该测试即满足这一要求：逐字段核对 `expected`、校验 Top N 的 ID 顺序，
+并验证每个百分比确实等于自身分子/分母——只比分子分母的话，一个算错比例的指标仍会通过。
+**新增工具时必须同时补一条参考案例**，否则该工具不在回归覆盖内（测试会检查覆盖度）。
 
 ## 判分口径
 
@@ -40,6 +47,15 @@ RAG 用例按三部分分别评分：工具选择、来源召回、答案事实�
 只重跑指定用例时可重复传入 `--case-id`，例如 `--case-id unsupported_current_meta --case-id prompt_injection_guardrail`。
 
 该脚本逐条调用配置的 Qwen Chat API；需要 Embedding API 检索时也会产生相应调用费用。脚本自动核对工具选择、来源标题和结构化数值，答案中的事实约束及禁止断言仍需人工复核。
+
+**`expected_retrieval` 已经可以零配额验证**：`scripts/verify_retrieval_offline.py` 读取同一份
+`rag_cases.jsonl`，用缓存向量按 embedding 顺序断言来源召回，并已接入离线检查。
+因此重跑 `evaluate_rag.py` 只为验证「工具选择 + 答案措辞 + 禁答断言」三件事，
+来源召回不必再靠它。
+
+**新增检索用例的正确流程**：先用 `scripts/validate_retrieval_candidates.py` 确认目标
+(source, heading) 真的能进 top K，再写入用例。否则会留下一条必然失败的断言——
+标题必须与文档中的 Markdown 标题逐字一致，写成大概意思会永远匹配不上。
 
 检索无匹配阈值校准使用 `retrieval_calibration.jsonl` 中的相关与无关查询，运行：
 

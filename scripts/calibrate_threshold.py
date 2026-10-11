@@ -122,16 +122,25 @@ def main() -> int:
 
     relevant = by_class.get("relevant", [])
     others = by_class.get("offtopic", []) + by_class.get("unanswerable", [])
-    if relevant and others:
+    # The threshold only ever separates "the corpus has something on this" from "it
+    # has nothing". offtopic documents are excluded from retrieval by category, so
+    # they must NOT enter the separability check: they score like relevant content
+    # and would make any cutoff look impossible.
+    answerable = by_class.get("unanswerable", [])
+    if relevant and answerable:
         print()
-        print("=== 可分性 ===")
-        print(f"  相关最高分最小值: {min(relevant):.4f}")
-        print(f"  无关/不可答最高分最大值: {max(others):.4f}")
-        gap = min(relevant) - max(others)
+        print("=== 可分性（只比 相关 vs 库内不可答）===")
+        print(f"  相关最低分: {min(relevant):.4f}")
+        print(f"  不可答最高分: {max(answerable):.4f}")
+        gap = min(relevant) - max(answerable)
         if gap > 0:
-            print(f"  完全可分，间隔 {gap:.4f}：任何 [{max(others):.4f}, {min(relevant):.4f}] 内的阈值都行")
+            print(f"  完全可分，间隔 {gap:.4f}；阈值可落在 [{max(answerable):.4f}, {min(relevant):.4f}]")
         else:
             print(f"  ⚠ 重叠 {-gap:.4f}：不存在能同时避免漏召与误召的单一阈值")
+    if others:
+        print()
+        print("  参考：干扰项（已按分类排除，不参与阈值判定）")
+        print(f"    offtopic 分数区间: {min(by_class.get('offtopic', [0])):.4f}–{max(by_class.get('offtopic', [0])):.4f}")
 
     # Recall@k for the expected-source cases.
     with_source = [item for item in results if item["expected"]]

@@ -20,12 +20,12 @@ for stream in (sys.stdout, sys.stderr):
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from lol_agent.embeddings import build_embeddings  # noqa: E402
 from lol_agent.knowledge import (  # noqa: E402
     INDEX_PATH,
     MIN_RETRIEVAL_SCORE,
     _bm25_scores,
     check_index_staleness,
+    embed_texts,
     score_chunks,
 )
 
@@ -54,7 +54,10 @@ def main() -> int:
                 print(f"  {key}: {item}", file=sys.stderr)
 
     try:
-        vectors = build_embeddings().embed_documents([case["query"] for case in cases])
+        # embed_texts, not embed_documents: DashScope rejects batches larger than 20
+        # and this case list has grown past that. Calling the raw client directly
+        # here is what made the 24th case fail with InvalidParameter.
+        vectors = embed_texts([case["query"] for case in cases])
     except Exception as exc:  # noqa: BLE001
         print(f"Calibration embedding failed ({type(exc).__name__}): {_redact(str(exc))}", file=sys.stderr)
         return 1

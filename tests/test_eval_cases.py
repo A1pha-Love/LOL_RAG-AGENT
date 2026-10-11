@@ -109,7 +109,11 @@ def _check_expected_block(expected: dict[str, Any], actual: dict[str, Any], case
             assert got_absent == value, f"{case_id}.not_occurred (got {got_absent})"
             continue
         if key == "ordered_ids":
-            ids = [str(row["champion_id"]) for row in actual["results"]]
+            # Champion and spell tools name their identifier column differently.
+            ids = [
+                str(row.get("champion_id", row.get("spell_id")))
+                for row in actual["results"]
+            ]
             assert ids == [str(item) for item in value], f"{case_id}.ordered_ids"
             continue
         if key == "appearances" and isinstance(value, list):
@@ -119,6 +123,13 @@ def _check_expected_block(expected: dict[str, Any], actual: dict[str, Any], case
         if key == "banned_matches" and isinstance(value, list):
             got = [row["banned_matches"] for row in actual["results"]]
             assert got == value, f"{case_id}.banned_matches"
+            continue
+        if key == "picked_teams" and isinstance(value, list):
+            got = [row["picked_teams"] for row in actual["results"]]
+            assert got == value, f"{case_id}.picked_teams"
+            continue
+        if key == "picked_teams" and isinstance(value, int):
+            assert actual.get("picked_teams") == value, f"{case_id}.picked_teams"
             continue
         if key == "appearances" and isinstance(value, int):
             assert actual["appearances"]["numerator"] == value, f"{case_id}.appearances"

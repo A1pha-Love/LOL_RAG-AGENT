@@ -1,0 +1,52 @@
+{
+  "min_rerank_score": 0.7,
+  "new_cases": [
+    {
+      "id": "player_rank_distribution",
+      "query": "这份数据里各段位的玩家分布比例是多少，大师以上有多少人？",
+      "top_score": 0.456572
+    },
+    {
+      "id": "role_lane_win_rate",
+      "query": "上单、打野、中单、ADC 和辅助各自的胜率是多少？",
+      "top_score": 0.417864
+    },
+    {
+      "id": "pick_order_position",
+      "query": "每场比赛的选人顺序是什么，几楼先选英雄？",
+      "top_score": 0.455813
+    },
+    {
+      "id": "current_tier_list",
+      "query": "当前版本最强的五个英雄是谁，官方梯队排名如何？",
+      "top_score": 0.392582
+    },
+    {
+      "id": "specific_patch_notes",
+      "query": "7.15 版本对厄加特重做的具体改动内容是哪些？",
+      "top_score": 0.792851
+    },
+    {
+      "id": "player_kda_ranking",
+      "query": "这份数据里 KDA 最高的选手是谁，场均击杀多少？",
+      "top_score": 0.421093
+    },
+    {
+      "id": "item_build_win_rate",
+      "query": "第一件出无尽之刃的胜率比出夺萃之镰高多少？",
+      "top_score": 0.532748
+    },
+    {
+      "id": "future_season_forecast",
+      "query": "根据这些数据预测下个赛季哪些英雄会被削弱？",
+      "top_score": 0.55804
+    }
+  ],
+  "max_new_score": 0.792851,
+  "over_cutoff": [
+    [
+      "specific_patch_notes",
+      0.792851
+    ]
+  ]
+}

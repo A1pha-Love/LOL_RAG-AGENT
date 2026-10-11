@@ -56,18 +56,46 @@ EMBEDDING_DIMENSIONS = 1024
 VECTOR_WEIGHT = 1.0
 BM25_WEIGHT = 0.0
 LEXICAL_WEIGHT = 0.0
-# No-answer cutoff when reranking. Measured top-1 rerank score on
-# evals/retrieval_calibration.jsonl (17 scored + 6 unanswerable cases):
-#   answerable (in scope)  0.8099 – 0.9790
-#   corpus-answerable but offtopic  0.8453 – 0.9453
-#   unanswerable           0.2840 – 0.6185
-# 0.70 sits in the gap. It only separates "the corpus has an answer" from "it
-# does not"; keeping off-topic but answerable questions out is a prompt-level
-# concern, not a retrieval-score one.
+# No-answer cutoff when reranking. Measured top-1 rerank score over all 31 cases in
+# evals/retrieval_calibration.jsonl (reproduce with scripts/calibrate_threshold.py):
+#
+#   relevant (in scope)      n=15   0.7929 – 0.9790
+#   unanswerable             n=13   0.2840 – 0.6185
+#   offtopic (excluded)      n=3    0.8453 – 0.9453
+#
+# What this cutoff does and does not do:
+#
+#   * It separates "the corpus has something on this" from "it has nothing". The
+#     feasible band is [0.6185, 0.7929]; 0.70 sits inside it, roughly centred
+#     (+0.0815 above the ceiling, -0.0929 below the floor).
+#   * It does NOT separate relevant from offtopic — those ranges overlap almost
+#     entirely, so no score can do it. Distractors are therefore excluded by
+#     category (see NON_CONTENT_CATEGORIES) and must stay out of any separability
+#     calculation, or the cutoff looks impossible to choose.
+#   * A high score means "this chunk is on the same topic", not "the question is
+#     fully answerable". The case `specific_patch_notes` scores 0.7929 because the
+#     corpus can state when the rework happened and that it accompanied a rename,
+#     even though it holds no line-by-line patch notes. It is labelled relevant for
+#     that reason; do not reclassify such cases as unanswerable.
+#
+# The band is wide enough that the exact value is not delicate, but it is still a
+# provisional choice from 31 queries: review failures before adjusting it.
 MIN_RERANK_SCORE = 0.70
 # Candidate pool handed to the reranker, and the cutoff used when reranking is
 # unavailable (the vector score is a different scale and cannot share the above).
 RERANK_CANDIDATE_POOL = 20
+
+# Cutoff for the embedding-only fallback path, used only when the reranker is
+# unavailable. Measured on the same cases with scripts/calibrate_retrieval.py:
+#
+#   relevant (in scope)   0.5921 – 0.8799
+#   unanswerable          0.3419 – 0.6334
+#
+# These OVERLAP (relevant floor 0.5921 sits below the unanswerable ceiling 0.6334),
+# so embedding similarity alone cannot be the no-answer gate — which is exactly why
+# reranking is the primary path. The fallback is best-effort: it still filters
+# obvious misses, and it cannot be tuned to be both safe and complete. Treat a
+# fallback turn as "retrieval degraded" rather than "no answer exists".
 MIN_RETRIEVAL_SCORE = 0.3703
 
 VALID_CATEGORIES = {"project", "domain", "conflict", "meta", "offtopic", "noise"}

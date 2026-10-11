@@ -45,6 +45,17 @@ export const api = {
 
   deleteSession: (id: string) =>
     request<void>(`/api/sessions/${id}`, { method: 'DELETE' }),
+
+  /** Pin or unpin a conversation; pinned ones sort above the rest. */
+  pinSession: (id: string, pinned: boolean) =>
+    request<{ session_id: string; pinned: boolean }>(`/api/sessions/${id}/pin`, {
+      method: 'PUT',
+      body: JSON.stringify({ pinned }),
+    }),
+
+  /** Record that a conversation was opened, so it rises within its group. */
+  touchSession: (id: string) =>
+    request<{ session_id: string }>(`/api/sessions/${id}/touch`, { method: 'POST' }),
 }
 
 /**

@@ -93,9 +93,11 @@ describe('store turn identity', () => {
     const apiStub = {
       health: vi.fn(),
       listSessions: vi.fn(async () => ({ sessions: [] })),
-      createSession: vi.fn(),
+      createSession: vi.fn(async () => ({ session_id: 's1', title: '' })),
       getSession: vi.fn(),
       deleteSession: vi.fn(),
+      pinSession: vi.fn(),
+      touchSession: vi.fn(async (id: string) => ({ session_id: id })),
     }
     vi.doMock('@/lib/api', () => ({
       api: apiStub,
@@ -106,6 +108,8 @@ describe('store turn identity', () => {
 
     const { store } = await import('@/composables/useAgent')
     void store.ask('问题')
+    // The conversation is created before streaming, so the turn appears a tick later.
+    await new Promise((resolve) => setTimeout(resolve, 0))
     await nextTick()
 
     const fromArray = store.state.turns[0]

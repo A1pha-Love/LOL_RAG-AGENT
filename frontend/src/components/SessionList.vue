@@ -26,7 +26,13 @@ const emit = defineEmits<{
   (event: 'create'): void
   (event: 'select', id: string): void
   (event: 'remove', id: string): void
+  (event: 'pin', id: string, pinned: boolean): void
 }>()
+
+/** True for the first row, when at least one conversation is pinned. */
+function showPinnedDivider(session: SessionSummary): boolean {
+  return props.sessions[0]?.session_id === session.session_id && session.pinned === 1
+}
 
 function isStreaming(id: string): boolean {
   return props.streamingId === id
@@ -62,32 +68,45 @@ function when(iso: string): string {
 
     <ul v-else class="session-list">
       <li v-for="session in sessions" :key="session.session_id">
-        <button
-          class="session-item"
-          :class="{ active: session.session_id === activeId }"
-          @click="emit('select', session.session_id)"
-        >
-          <span class="title">
-            <!-- Never disable navigation: mark the conversation instead, so the user
-                 can see where the answer is still being written. -->
-            <span v-if="isStreaming(session.session_id)" class="spinner" title="正在生成回答" />
-            {{ session.title || '（未命名会话）' }}
-          </span>
-          <span class="meta">
-            <code>{{ shortId(session.session_id) }}</code>
-            <span v-if="isStreaming(session.session_id)" class="generating">生成中…</span>
-            <span v-else>{{ session.turn_count }} 轮</span>
-            <span>{{ when(session.updated_at) }}</span>
-          </span>
-        </button>
-        <button
-          class="icon danger"
-          title="删除该会话"
-          :disabled="loading || isStreaming(session.session_id)"
-          @click.stop="emit('remove', session.session_id)"
-        >
-          ×
-        </button>
+        <!-- A divider marks where the pinned group ends, so the ordering is
+             legible rather than looking arbitrary. -->
+        <p v-if="showPinnedDivider(session)" class="group-label">置顶</p>
+        <div class="row">
+          <button
+            class="session-item"
+            :class="{ active: session.session_id === activeId, pinned: session.pinned === 1 }"
+            @click="emit('select', session.session_id)"
+          >
+            <span class="title">
+              <!-- Never disable navigation: mark the conversation instead, so the user
+                   can see where the answer is still being written. -->
+              <span v-if="isStreaming(session.session_id)" class="spinner" title="正在生成回答" />
+              {{ session.title || '（未命名会话）' }}
+            </span>
+            <span class="meta">
+              <code>{{ shortId(session.session_id) }}</code>
+              <span v-if="isStreaming(session.session_id)" class="generating">生成中…</span>
+              <span v-else>{{ session.turn_count }} 轮</span>
+              <span>{{ when(session.last_active_at || session.updated_at) }}</span>
+            </span>
+          </button>
+          <button
+            class="icon pin"
+            :class="{ on: session.pinned === 1 }"
+            :title="session.pinned === 1 ? '取消置顶' : '置顶该会话'"
+            @click.stop="emit('pin', session.session_id, session.pinned !== 1)"
+          >
+            {{ session.pinned === 1 ? '★' : '☆' }}
+          </button>
+          <button
+            class="icon danger"
+            title="删除该会话"
+            :disabled="loading || isStreaming(session.session_id)"
+            @click.stop="emit('remove', session.session_id)"
+          >
+            ×
+          </button>
+        </div>
       </li>
     </ul>
   </aside>
@@ -112,8 +131,39 @@ function when(iso: string): string {
 
 .session-list li {
   display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* The row holds the conversation button plus its pin and delete actions. */
+.session-list li .row {
+  display: flex;
   align-items: stretch;
   gap: 2px;
+}
+
+.group-label {
+  margin: 6px 4px 0;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.session-item.pinned .title {
+  color: var(--accent);
+}
+
+.icon.pin {
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.icon.pin:hover {
+  color: var(--accent);
+}
+
+.icon.pin.on {
+  color: var(--accent);
 }
 
 .session-item {

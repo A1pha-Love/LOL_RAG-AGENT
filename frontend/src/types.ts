@@ -14,6 +14,10 @@ export interface SessionSummary {
   created_at: string
   updated_at: string
   turn_count: number
+  /** 1 when pinned; pinned conversations sort above the rest. */
+  pinned: number
+  /** Last activity (or open) time, used to order the non-pinned group. */
+  last_active_at: string | null
 }
 
 export interface SessionDetail {

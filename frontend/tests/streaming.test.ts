@@ -31,6 +31,8 @@ const apiStub = {
     turns: [],
   })),
   deleteSession: vi.fn(async () => undefined),
+  pinSession: vi.fn(async (id: string, pinned: boolean) => ({ session_id: id, pinned })),
+  touchSession: vi.fn(async (id: string) => ({ session_id: id })),
 }
 
 let streamStub: (...args: unknown[]) => AsyncGenerator<unknown>
@@ -155,7 +157,9 @@ describe('live streaming updates', () => {
     const stop = effect(() => observed.push(store.state.turns.length))
 
     const pending = store.ask('问题')
-    await nextTick()
+    // The conversation is created before streaming, so the turn appears one tick
+    // after that round-trip rather than synchronously.
+    await waitFor(() => store.state.turns.length === 1, 'the turn to appear')
 
     expect(store.state.turns).toHaveLength(1)
     expect(store.state.turns[0].question).toBe('问题')

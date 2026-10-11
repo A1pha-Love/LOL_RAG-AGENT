@@ -70,6 +70,10 @@ class CreateSessionRequest(BaseModel):
     title: str = Field(default="", description="可选，留空则用首个问题作为标题")
 
 
+class PinSessionRequest(BaseModel):
+    pinned: bool = Field(description="true 置顶，false 取消置顶")
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=1, description="用户问题")
     session_id: str | None = Field(
@@ -148,6 +152,30 @@ def delete_session(session_id: str) -> None:
     except SessionNotFound as exc:
         raise HTTPException(status_code=404, detail=f"找不到会话：{session_id}") from exc
     get_store().delete_session(session_id)
+
+
+@app.put("/api/sessions/{session_id}/pin")
+def pin_session(session_id: str, body: PinSessionRequest) -> dict[str, Any]:
+    """Pin or unpin a conversation. Pinned ones sort above the rest."""
+    try:
+        get_store().set_pinned(session_id, body.pinned)
+    except SessionNotFound as exc:
+        raise HTTPException(status_code=404, detail=f"找不到会话：{session_id}") from exc
+    return {"session_id": session_id, "pinned": body.pinned}
+
+
+@app.post("/api/sessions/{session_id}/touch")
+def touch_session(session_id: str) -> dict[str, Any]:
+    """Record that a conversation was opened.
+
+    The UI calls this so the opened conversation rises to the top of the non-pinned
+    group while pinned conversations stay above it.
+    """
+    try:
+        get_store().touch(session_id)
+    except SessionNotFound as exc:
+        raise HTTPException(status_code=404, detail=f"找不到会话：{session_id}") from exc
+    return {"session_id": session_id}
 
 
 # --------------------------------------------------------------------------

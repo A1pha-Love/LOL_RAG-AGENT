@@ -30,6 +30,8 @@ const apiStub = {
     turns: [],
   })),
   deleteSession: vi.fn(async () => undefined),
+  pinSession: vi.fn(async (id: string, pinned: boolean) => ({ session_id: id, pinned })),
+  touchSession: vi.fn(async (id: string) => ({ session_id: id })),
 }
 
 let streamStub: (...args: unknown[]) => AsyncGenerator<unknown>
@@ -95,12 +97,16 @@ describe('ask', () => {
     expect(store.state.turns[0].answer).toBe('答案')
   })
 
-  it('adopts the session id the server created implicitly', async () => {
+  it('adopts the session id from the session created up front', async () => {
+    // The frontend now creates the conversation before streaming, so the id is known
+    // immediately and the done event's id is not what identifies it. That is what
+    // makes the conversation appear in the sidebar right away.
     const store = await loadStore()
 
     await store.ask('问题')
 
-    expect(store.state.activeSessionId).toBe('s9')
+    expect(apiStub.createSession).toHaveBeenCalledTimes(1)
+    expect(store.state.activeSessionId).toBe('s1')
   })
 
   it('frees the UI when the stream throws', async () => {
@@ -116,10 +122,12 @@ describe('ask', () => {
   })
 
   it('resolves ask() even when the session refresh never settles', async () => {
-    // Regression: the refresh was awaited inside the finally block, so a refresh
+    // Regression: the refresh was awaited on the turn's critical path, so a refresh
     // that never resolved meant ask() never resolved either. Callers awaiting the
-    // turn hung forever, which is how the whole UI (composer, suggestions,
-    // sidebar) ended up unresponsive rather than merely slow.
+    // turn hung forever, which is how the whole UI (composer, suggestions, sidebar)
+    // ended up unresponsive rather than merely slow.
+    //
+    // The refresh after createSession must not reintroduce that: it is fire-and-forget.
     apiStub.listSessions.mockImplementation(() => new Promise(() => {}))
     const store = await loadStore()
 

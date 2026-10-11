@@ -82,6 +82,7 @@ function onSelectTurn(id: number): void {
         @create="store.startNewSession()"
         @select="(id: string) => withLoading(() => store.selectSession(id))"
         @remove="(id: string) => withLoading(() => store.removeSession(id))"
+        @pin="(id: string, pinned: boolean) => withLoading(() => store.togglePin(id, pinned))"
       />
 
       <ChatStream

@@ -109,7 +109,15 @@ class Session:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    """Current UTC time as an ISO string, with microseconds.
+
+    Microseconds matter for ordering: opening two conversations, or pinning two, can
+    easily happen within the same second, and second precision would leave the order
+    to an arbitrary tie-break. ISO strings compare lexicographically and the shorter
+    (second-precision) values written by older versions still sort correctly against
+    the longer ones.
+    """
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
 
 
 class SessionStore:
@@ -138,6 +146,11 @@ class SessionStore:
         ``with sqlite3.connect(...)`` only wraps a transaction — it does *not*
         close the connection, which on Windows leaves the database file locked
         until garbage collection and breaks any later unlink/rename.
+
+        The schema is created and migrated here rather than in an explicit setup
+        step, so an existing database is upgraded by whichever operation touches it
+        first. Sessions predating pinning therefore keep working without the user
+        running anything.
         """
         self.path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(self.path)
@@ -146,11 +159,14 @@ class SessionStore:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS sessions (
-                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL UNIQUE,
-                    title      TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id     TEXT NOT NULL UNIQUE,
+                    title          TEXT NOT NULL DEFAULT '',
+                    created_at     TEXT NOT NULL,
+                    updated_at     TEXT NOT NULL,
+                    pinned         INTEGER NOT NULL DEFAULT 0,
+                    pinned_at      TEXT,
+                    last_active_at TEXT
                 );
                 CREATE TABLE IF NOT EXISTS turns (
                     turn_id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,6 +181,7 @@ class SessionStore:
                 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, turn_id);
                 """
             )
+            self._migrate(connection)
             yield connection
             connection.commit()
         except Exception:
@@ -173,6 +190,36 @@ class SessionStore:
         finally:
             connection.close()
 
+    @staticmethod
+    def _migrate(connection: sqlite3.Connection) -> None:
+        """Add columns introduced after the first release, and backfill them.
+
+        ``ALTER TABLE ... ADD COLUMN`` is idempotent only by checking the existing
+        columns first; SQLite has no ``ADD COLUMN IF NOT EXISTS``.
+        """
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(sessions)")}
+        if "pinned" not in columns:
+            connection.execute("ALTER TABLE sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0")
+        if "pinned_at" not in columns:
+            connection.execute("ALTER TABLE sessions ADD COLUMN pinned_at TEXT")
+        if "last_active_at" not in columns:
+            connection.execute("ALTER TABLE sessions ADD COLUMN last_active_at TEXT")
+            # Backfill from the newest turn so existing conversations sort by their
+            # real recency rather than all landing on one value.
+            connection.execute(
+                """
+                UPDATE sessions SET last_active_at = COALESCE(
+                    (SELECT MAX(t.created_at) FROM turns t WHERE t.session_id = sessions.session_id),
+                    updated_at
+                )
+                WHERE last_active_at IS NULL
+                """
+            )
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS idx_sessions_order "
+            "ON sessions(pinned DESC, pinned_at DESC, last_active_at DESC, id DESC)"
+        )
+
     # -- writes ----------------------------------------------------------
 
     def create_session(self, title: str = "") -> str:
@@ -180,8 +227,9 @@ class SessionStore:
         stamp = _now()
         with self._connect() as connection:
             connection.execute(
-                "INSERT INTO sessions (session_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (session_id, title, stamp, stamp),
+                """INSERT INTO sessions (session_id, title, created_at, updated_at, last_active_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (session_id, title, stamp, stamp, stamp),
             )
         return session_id
 
@@ -189,10 +237,39 @@ class SessionStore:
         stamp = _now()
         with self._connect() as connection:
             connection.execute(
-                "INSERT OR IGNORE INTO sessions (session_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
-                (session_id, title, stamp, stamp),
+                """INSERT OR IGNORE INTO sessions (session_id, title, created_at, updated_at, last_active_at)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (session_id, title, stamp, stamp, stamp),
             )
         return session_id
+
+    def set_pinned(self, session_id: str, pinned: bool) -> None:
+        """Pin or unpin a conversation; raises if it does not exist.
+
+        Pinning records its own timestamp so the pinned group keeps a stable order
+        (most recently pinned first) instead of reshuffling with activity.
+        """
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE sessions SET pinned = ?, pinned_at = ? WHERE session_id = ?",
+                (1 if pinned else 0, _now() if pinned else None, session_id),
+            )
+            if cursor.rowcount == 0:
+                raise SessionNotFound(session_id)
+
+    def touch(self, session_id: str) -> None:
+        """Record that a conversation was just opened.
+
+        Called by the UI so opening a conversation moves it up within the
+        non-pinned group. Raises if the session does not exist.
+        """
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE sessions SET last_active_at = ? WHERE session_id = ?",
+                (_now(), session_id),
+            )
+            if cursor.rowcount == 0:
+                raise SessionNotFound(session_id)
 
     def append_turn(
         self,
@@ -225,7 +302,8 @@ class SessionStore:
                         (content.strip()[:60], session_id),
                     )
             connection.execute(
-                "UPDATE sessions SET updated_at = ? WHERE session_id = ?", (stamp, session_id)
+                "UPDATE sessions SET updated_at = ?, last_active_at = ? WHERE session_id = ?",
+                (stamp, stamp, session_id),
             )
 
     def set_title(self, session_id: str, title: str) -> None:
@@ -245,15 +323,20 @@ class SessionStore:
     def list_sessions(self, limit: int = 50) -> list[dict[str, Any]]:
         if not self.path.is_file():
             return []
-        # Ordered by insertion sequence, not by updated_at: the timestamp has
-        # only second precision, so two sessions touched in the same second
-        # would tie and their order would become arbitrary.
+        # Order: pinned conversations first (most recently pinned at the top), then
+        # the rest by most recent activity. `touch()` bumps last_active_at when a
+        # conversation is opened, so opening one moves it to the head of the
+        # non-pinned group while the pinned group stays above it.
+        #
+        # Timestamps are secondary to `id`: _now() has second precision, so two
+        # sessions touched in the same second must still have a stable order.
         with self._connect() as connection:
             rows = connection.execute(
                 """SELECT s.session_id, s.title, s.created_at, s.updated_at,
+                          s.pinned, s.last_active_at,
                           (SELECT COUNT(*) FROM turns t WHERE t.session_id = s.session_id) AS turn_count
                    FROM sessions s
-                   ORDER BY s.id DESC
+                   ORDER BY s.pinned DESC, s.pinned_at DESC, s.last_active_at DESC, s.id DESC
                    LIMIT ?""",
                 (limit,),
             ).fetchall()

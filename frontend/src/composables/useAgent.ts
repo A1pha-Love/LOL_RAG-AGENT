@@ -142,6 +142,22 @@ async function selectSession(id: string): Promise<void> {
   // must not leave the composer and sidebar disabled.
   state.streaming = liveTurn !== null && liveTurn.sessionId === id
   state.selectedTurnId = state.turns.at(-1)?.id ?? null
+
+  // Opening a conversation counts as activity, so it rises to the head of the
+  // non-pinned group. Recorded on the server so the order survives a reload, then
+  // re-read rather than reordering locally — one source of truth for the order.
+  try {
+    await api.touchSession(id)
+    await refreshSessions()
+  } catch {
+    // Ordering is cosmetic; a failure here must not break opening a conversation.
+  }
+}
+
+/** Pin or unpin a conversation. */
+async function togglePin(id: string, pinned: boolean): Promise<void> {
+  await api.pinSession(id, pinned)
+  await refreshSessions()
 }
 
 function startNewSession(): void {
@@ -166,6 +182,36 @@ async function ask(question: string): Promise<void> {
   // Only the visible conversation is blocked: a turn already running in a different
   // conversation must not stop the user from asking here.
   if (!trimmed || state.streaming) return
+
+  // Create the conversation up front rather than letting the first turn create it
+  // server-side. The id is then known before streaming starts, so the conversation
+  // appears in the sidebar immediately and cannot be lost among the others.
+  if (!state.activeSessionId) {
+    try {
+      const created = await api.createSession()
+      state.activeSessionId = created.session_id
+      // Added optimistically so the conversation is visible at once. The refresh is
+      // deliberately NOT awaited: blocking here is the same mistake as the old
+      // finally-block refresh, where a slow request left ask() unresolved and the
+      // whole UI disabled. The post-turn refresh reconciles the real counters.
+      state.sessions = [
+        {
+          session_id: created.session_id,
+          title: created.title,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          turn_count: 0,
+          pinned: 0,
+          last_active_at: new Date().toISOString(),
+        },
+        ...state.sessions,
+      ]
+      void refreshSessions().catch(() => undefined)
+    } catch (error) {
+      state.banner = `无法创建会话：${(error as Error).message}`
+      return
+    }
+  }
 
   // Captured now, because the user may switch conversations while this runs. The
   // backend keys the answer to this id, so the turn belongs to it regardless of what
@@ -321,6 +367,7 @@ export const store = {
   refreshSessions,
   selectSession,
   isSessionStreaming,
+  togglePin,
   startNewSession,
   removeSession,
   ask,

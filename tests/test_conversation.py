@@ -147,6 +147,179 @@ def test_list_sessions_on_missing_database_is_empty() -> None:
     assert store.list_sessions() == []
 
 
+# --------------------------------------------------------------------------
+# pinning and ordering
+# --------------------------------------------------------------------------
+
+def test_pinned_sessions_sort_above_the_rest(temp_db) -> None:
+    with _temp_store(temp_db) as store:
+        first = store.create_session()
+        second = store.create_session()
+        third = store.create_session()
+
+        store.set_pinned(first, True)
+
+        listed = [item["session_id"] for item in store.list_sessions()]
+        assert listed[0] == first, "a pinned conversation must come first"
+        assert listed[1:] == [third, second], "the rest keep their recency order"
+
+
+def test_sessions_default_to_unpinned(temp_db) -> None:
+    with _temp_store(temp_db) as store:
+        store.create_session()
+        assert store.list_sessions()[0]["pinned"] == 0
+
+
+def test_opening_a_session_raises_it_within_the_unpinned_group(temp_db) -> None:
+    """The UI calls touch() when a conversation is opened."""
+    with _temp_store(temp_db) as store:
+        oldest = store.create_session()
+        middle = store.create_session()
+        newest = store.create_session()
+
+        assert [item["session_id"] for item in store.list_sessions()] == [newest, middle, oldest]
+
+        store.touch(oldest)
+
+        assert [item["session_id"] for item in store.list_sessions()] == [oldest, newest, middle]
+
+
+def test_opening_a_session_never_lifts_it_above_a_pinned_one(temp_db) -> None:
+    """Requirement: an opened conversation sits *below* the pinned ones."""
+    with _temp_store(temp_db) as store:
+        pinned = store.create_session()
+        other = store.create_session()
+        store.set_pinned(pinned, True)
+
+        store.touch(other)
+
+        listed = [item["session_id"] for item in store.list_sessions()]
+        assert listed[0] == pinned
+        assert listed[1] == other
+
+
+def test_unpinning_returns_a_session_to_the_activity_order(temp_db) -> None:
+    with _temp_store(temp_db) as store:
+        first = store.create_session()
+        second = store.create_session()
+        store.set_pinned(first, True)
+        assert store.list_sessions()[0]["session_id"] == first
+
+        store.set_pinned(first, False)
+
+        # Back to recency order, where `second` is newer.
+        assert [item["session_id"] for item in store.list_sessions()] == [second, first]
+
+
+def test_pinning_the_same_session_twice_is_idempotent(temp_db) -> None:
+    with _temp_store(temp_db) as store:
+        session_id = store.create_session()
+        store.set_pinned(session_id, True)
+        store.set_pinned(session_id, True)
+        assert len(store.list_sessions()) == 1
+        assert store.list_sessions()[0]["pinned"] == 1
+
+
+def test_pinning_an_unknown_session_raises(temp_db) -> None:
+    with _temp_store(temp_db) as store:
+        store.create_session()
+        with pytest.raises(conv.SessionNotFound):
+            store.set_pinned("does-not-exist", True)
+
+
+def test_touching_an_unknown_session_raises(temp_db) -> None:
+    with _temp_store(temp_db) as store:
+        store.create_session()
+        with pytest.raises(conv.SessionNotFound):
+            store.touch("does-not-exist")
+
+
+def test_new_sessions_record_last_active_at(temp_db) -> None:
+    with _temp_store(temp_db) as store:
+        session_id = store.create_session()
+        assert store.list_sessions()[0]["last_active_at"], "recency must be recorded"
+        store.append_turn(session_id, "user", "问题")
+        assert store.list_sessions()[0]["last_active_at"]
+
+
+def test_ordering_stays_stable_within_the_same_second(temp_db) -> None:
+    """Timestamps carry microseconds, so rapid activity still orders.
+
+    With second precision, opening several conversations quickly would tie and the
+    order would fall back to insertion — the list would look like it ignored the
+    most recent click.
+    """
+    with _temp_store(temp_db) as store:
+        ids = [store.create_session() for _ in range(5)]
+        for session_id in ids:
+            store.touch(session_id)
+        assert store.list_sessions()[0]["session_id"] == ids[-1]
+
+
+def test_migration_adds_columns_to_an_existing_database(temp_db) -> None:
+    """An older database must be upgraded in place, keeping its conversations.
+
+    The columns are added by whichever operation touches the database first, so an
+    existing user does not have to run a migration step.
+    """
+    import sqlite3
+
+    connection = sqlite3.connect(temp_db)
+    connection.executescript(
+        """
+        CREATE TABLE sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE turns (
+            turn_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            retrieval_query TEXT,
+            tool_calls TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL
+        );
+        """
+    )
+    connection.execute(
+        "INSERT INTO sessions (session_id, title, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        ("legacy", "旧会话", "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+    )
+    connection.execute(
+        """INSERT INTO turns (session_id, role, content, tool_calls, created_at)
+           VALUES (?, ?, ?, ?, ?)""",
+        ("legacy", "user", "旧问题", "[]", "2026-01-02T00:00:00+00:00"),
+    )
+    connection.commit()
+    connection.close()
+
+    store = conv.SessionStore(temp_db)
+    listed = store.list_sessions()
+
+    assert len(listed) == 1, "the existing conversation must survive the migration"
+    assert listed[0]["session_id"] == "legacy"
+    assert listed[0]["title"] == "旧会话"
+    assert listed[0]["pinned"] == 0
+    # Backfilled from the newest turn, not left null, so ordering is meaningful.
+    assert listed[0]["last_active_at"] == "2026-01-02T00:00:00+00:00"
+
+    # The new features must work on the migrated database too.
+    store.set_pinned("legacy", True)
+    assert store.list_sessions()[0]["pinned"] == 1
+
+
+def test_migration_is_idempotent(temp_db) -> None:
+    store = conv.SessionStore(temp_db)
+    store.create_session()
+    # Every operation re-runs the migration; a second pass must not fail.
+    for _ in range(3):
+        assert len(store.list_sessions()) == 1
+
+
 def test_ensure_session_is_idempotent(temp_db) -> None:
     with _temp_store(temp_db) as store:
         session_id = store.create_session()

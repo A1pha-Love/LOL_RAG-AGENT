@@ -84,6 +84,22 @@ def get_average_game_duration() -> dict:
 
 
 @tool
+def get_spell_stats(
+    spell: str | None = None,
+    sort_by: Literal["picked_teams", "pick_rate", "win_rate_when_picked"] = "picked_teams",
+    limit: int | None = None,
+) -> dict:
+    """Get summoner-spell pick rates and win rates. Filter by numeric spell ID or exact Chinese name (e.g. 闪现), or return top N. Pick rate is per team appearance."""
+    return data_tools.get_spell_stats(spell, sort_by, limit)
+
+
+@tool
+def get_spell_win_split(spell: str) -> dict:
+    """Compare team win rate with versus without one summoner spell. Descriptive for this dataset, not a causal effect."""
+    return data_tools.get_spell_win_split(spell)
+
+
+@tool
 def search_project_knowledge(query: str, top_k: int = 8) -> dict[str, object]:
     """Retrieve project metric definitions, dataset boundaries, and audit evidence; cite returned source and heading.
 
@@ -130,6 +146,8 @@ AGENT_TOOLS = [
     get_first_event_win_rate,
     get_first_event_occurrence_rate,
     get_average_game_duration,
+    get_spell_stats,
+    get_spell_win_split,
     search_project_knowledge,
 ]
 

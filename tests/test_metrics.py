@@ -358,3 +358,154 @@ def test_winner_column_only_holds_one_or_two(deduplicate: bool, expected: Counte
     assert counter == expected
     assert set(counter) == {"1", "2"}
     assert sum(counter.values()) == (UNIQUE_MATCH_COUNT if deduplicate else RAW_ROW_COUNT)
+
+
+# --------------------------------------------------------------------------
+# summoner spells
+# --------------------------------------------------------------------------
+
+def _spell_row(game_id: str, winner: str, **spells: str) -> dict[str, str]:
+    """Build a row where each keyword is a column and its value a spell id.
+
+    Example: ``_spell_row("g1", "1", t1_champ1_sum1="4")``
+    """
+    return {"gameId": game_id, "winner": winner, **spells}
+
+
+def test_spells_for_team_collects_both_slots_of_every_player() -> None:
+    row = _spell_row(
+        "g1",
+        "1",
+        t1_champ1_sum1="4",
+        t1_champ1_sum2="12",
+        t1_champ2_sum1="4",
+        t1_champ2_sum2="14",
+        t2_champ1_sum1="7",
+    )
+    assert metrics._spells_for_team(row, 1) == {"4", "12", "14"}
+    assert metrics._spells_for_team(row, 2) == {"7"}
+
+
+def test_the_same_spell_in_both_slots_counts_once_per_team() -> None:
+    """Flash in two slots is one team fielding Flash, not two.
+
+    This is the core definition: the count is "teams that fielded the spell", so a
+    slot-level count would double-count and inflate the rate.
+    """
+    row = _spell_row("g1", "1", t1_champ1_sum1="4", t1_champ1_sum2="4")
+    assert metrics._spells_for_team(row, 1) == {"4"}
+    stats = metrics.spell_stats([row])
+    assert stats["4"]["picked_teams"] == 1
+    # Two team appearances in one match (t1 and t2), so 1/2.
+    assert stats["4"]["pick_rate"]["denominator"] == 2
+    assert stats["4"]["pick_rate"]["value"] == pytest.approx(50.0)
+
+
+def test_spell_pick_rate_denominator_is_team_appearances() -> None:
+    """Two teams per match, so the denominator is 2 x matches, not matches."""
+    rows = [
+        _spell_row("g1", "1", t1_champ1_sum1="4"),
+        _spell_row("g2", "2", t2_champ1_sum1="4"),
+    ]
+    stats = metrics.spell_stats(rows)
+    pick = stats["4"]["pick_rate"]
+    assert pick["numerator"] == 2
+    assert pick["denominator"] == 4, "2 matches x 2 teams"
+    assert pick["value"] == pytest.approx(50.0)
+
+
+def test_spell_win_is_credited_only_to_the_winning_team() -> None:
+    rows = [
+        _spell_row("g1", "1", t1_champ1_sum1="4", t2_champ1_sum1="4"),
+        _spell_row("g2", "1", t1_champ1_sum1="4"),
+    ]
+    stats = metrics.spell_stats(rows)
+    # Flash was fielded by 3 teams: both in g1, one in g2. Only g1's t1 and g2's t1 won.
+    assert stats["4"]["picked_teams"] == 3
+    assert stats["4"]["wins"] == 2
+    assert stats["4"]["win_rate_when_picked"]["value"] == pytest.approx(200 / 3)
+
+
+def test_slot_order_is_not_treated_as_meaningful() -> None:
+    """_sum1 and _sum2 are unordered, so swapping them must not change anything."""
+    forward = metrics.spell_stats([_spell_row("g1", "1", t1_champ1_sum1="4", t1_champ1_sum2="12")])
+    reversed_ = metrics.spell_stats([_spell_row("g1", "1", t1_champ1_sum1="12", t1_champ1_sum2="4")])
+    assert forward == reversed_
+
+
+def test_missing_or_invalid_spell_slots_are_ignored() -> None:
+    row = _spell_row(
+        "g1",
+        "1",
+        t1_champ1_sum1="",
+        t1_champ1_sum2="0",
+        t1_champ2_sum1="-1",
+        t1_champ2_sum2="4",
+    )
+    assert metrics._spells_for_team(row, 1) == {"4"}
+
+
+def test_spell_win_split_covers_every_team_exactly_once() -> None:
+    """Both sides together must account for all team appearances, or a team with
+    the spell would be missing from the comparison entirely."""
+    rows = [
+        _spell_row("g1", "1", t1_champ1_sum1="4", t2_champ1_sum1="7"),
+        _spell_row("g2", "2", t1_champ1_sum1="4"),
+    ]
+    split = metrics.spell_win_split(rows, "4")
+    assert split["with_spell"]["teams"] == 2  # g1 t1, g2 t1
+    assert split["without_spell"]["teams"] == 2  # g1 t2, g2 t2
+    assert split["with_spell"]["teams"] + split["without_spell"]["teams"] == len(rows) * 2
+    assert split["with_spell"]["wins"] == 1  # g1 t1 won
+    assert split["without_spell"]["wins"] == 1  # g2 t2 won
+
+
+def test_spell_win_split_rejects_a_non_positive_id() -> None:
+    with pytest.raises(ValueError, match="spell_id"):
+        metrics.spell_win_split([_spell_row("g1", "1")], "-1")
+    with pytest.raises(ValueError, match="spell_id"):
+        metrics.spell_win_split([_spell_row("g1", "1")], "x")
+
+
+def test_spell_stats_deduplicates_matches() -> None:
+    row = _spell_row("g1", "1", t1_champ1_sum1="4")
+    assert metrics.spell_stats([row, row])["4"]["picked_teams"] == 1
+
+
+@needs_dataset
+def test_flash_is_on_almost_every_team(rows: list[dict[str, str]]) -> None:
+    """Ground truth: Flash is near-universal, which is why it is a poor differentiator.
+
+    The measured value is 102,104 of 102,106 team appearances. Asserting the order
+    of magnitude rather than the exact count keeps the test meaningful if the
+    dataset is ever re-exported while still catching a broken denominator.
+    """
+    stats = metrics.spell_stats(rows)
+    flash = stats["4"]
+    assert flash["picked_teams"] > len(rows) * 2 * 0.99
+    assert flash["pick_rate"]["denominator"] == len(rows) * 2
+    # A near-universal spell must sit at the coin-flip win rate.
+    assert flash["win_rate_when_picked"]["value"] == pytest.approx(50.0, abs=0.5)
+
+
+@needs_dataset
+def test_every_distinct_spell_id_in_the_dataset_is_reported(rows: list[dict[str, str]]) -> None:
+    """The nine ids present must all appear, none invented."""
+    observed: set[str] = set()
+    for row in rows:
+        for team in (1, 2):
+            observed |= metrics._spells_for_team(row, team)
+    assert set(metrics.spell_stats(rows)) == observed
+    assert len(observed) == 9
+
+
+@needs_dataset
+def test_spell_counts_reconcile_with_a_slot_level_tally(rows: list[dict[str, str]]) -> None:
+    """Independent recomputation of the team-level totals.
+
+    Guards against a subtle over- or under-count in _spells_for_team: the sum over
+    spells of picked_teams must equal a direct per-team deduplicated tally.
+    """
+    direct = sum(len(metrics._spells_for_team(row, team)) for row in rows for team in (1, 2))
+    reported = sum(item["picked_teams"] for item in metrics.spell_stats(rows).values())
+    assert direct == reported

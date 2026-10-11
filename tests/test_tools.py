@@ -112,3 +112,93 @@ def test_unknown_sort_key_is_rejected() -> None:
         tools.get_champion_stats(sort_by="kills")
     with pytest.raises(ValueError, match="sort_by"):
         tools.get_ban_stats(sort_by="kills")
+
+
+# --------------------------------------------------------------------------
+# summoner spells
+# --------------------------------------------------------------------------
+
+@needs_dataset
+def test_spell_stats_reports_every_spell_in_the_dataset() -> None:
+    result = tools.get_spell_stats()
+    assert result["total_spells"] == 9
+    # Only nine spells exist, so the ranking cap (20) cannot be reached: the caller
+    # gets all of them, and the count is clamped to what the data holds.
+    assert len(result["results"]) == min(tools.DEFAULT_RANKING_LIMIT, result["total_spells"])
+    assert len(result["results"]) == 9
+
+
+@needs_dataset
+def test_spell_can_be_addressed_by_id_or_by_chinese_name() -> None:
+    by_id = tools.get_spell_stats("4")
+    by_name = tools.get_spell_stats("闪现")
+    assert by_id["results"] == by_name["results"]
+    assert by_id["spell_id_filter"] == "4"
+    assert len(by_id["results"]) == 1
+    assert by_id["results"][0]["spell_name"] == "闪现"
+
+
+@needs_dataset
+def test_unrecognised_spell_returns_a_note_instead_of_a_silent_empty_list() -> None:
+    """A silent empty list is indistinguishable from "this dataset has no data",
+    so the caller is told the input was not understood."""
+    result = tools.get_spell_stats("这不是技能")
+    assert result["results"] == []
+    assert result["spell_id_filter"] is None
+    assert "未识别" in result["note"]
+
+
+@needs_dataset
+def test_spell_labels_come_from_the_mapping_file() -> None:
+    result = tools.get_spell_stats(limit=9)
+    names = {row["spell_id"]: row["spell_name"] for row in result["results"]}
+    assert names["4"] == "闪现"
+    assert names["11"] == "惩戒"
+    assert names["21"] == "屏障"
+    assert all(name for name in names.values()), "every spell must have a label"
+
+
+@needs_dataset
+def test_spell_ranking_is_sorted_for_every_key() -> None:
+    for key in ("picked_teams", "pick_rate", "win_rate_when_picked"):
+        rows = tools.get_spell_stats(sort_by=key, limit=9)["results"]
+        # `picked_teams` is a plain int; the rate fields are numerator/denominator dicts.
+        values = [row[key] if isinstance(row[key], int) else row[key]["value"] for row in rows]
+        assert values == sorted(values, reverse=True), f"{key} is not sorted"
+
+
+@needs_dataset
+def test_spell_win_split_is_internally_consistent() -> None:
+    result = tools.get_spell_win_split("闪现")
+    with_side = result["with_spell"]
+    without_side = result["without_spell"]
+    # Both sides must cover every team appearance in the dataset.
+    assert with_side["teams"] + without_side["teams"] == 51_053 * 2
+    assert result["spell_name"] == "闪现"
+    # The caveat must travel with the numbers: this is not a causal claim.
+    assert "非受控实验" in result["caveat"]
+
+
+@needs_dataset
+def test_spell_win_split_rejects_an_unrecognised_spell() -> None:
+    result = tools.get_spell_win_split("这不是技能")
+    assert result["spell_id_filter"] is None
+    assert "未识别" in result["note"]
+
+
+def test_spell_sort_key_and_limit_validation() -> None:
+    with pytest.raises(ValueError, match="sort_by"):
+        tools.get_spell_stats(sort_by="kills")
+    with pytest.raises(ValueError, match="limit"):
+        tools.get_spell_stats(limit=0)
+
+
+@needs_dataset
+def test_disable_spells_from_the_mapping_are_not_invented() -> None:
+    """The mapping lists retired spells (35, 36) the dataset never contains.
+
+    Asking for one must report "not recognised" rather than returning a zero row,
+    which would look like a real spell that is simply never picked.
+    """
+    result = tools.get_spell_stats("35")
+    assert result["results"] == [], "a disabled spell must not produce a data row"

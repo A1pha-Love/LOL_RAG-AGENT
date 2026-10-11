@@ -124,6 +124,112 @@ def champion_stats(rows: Iterable[Row]) -> dict[str, dict]:
     }
 
 
+def _spells_for_team(row: Row, team: int) -> set[str]:
+    """The distinct summoner spells a team fielded in one match.
+
+    Each of the 5 players has two spell slots (``_sum1`` / ``_sum2``), so a team
+    contributes up to 10 slots but far fewer *distinct* spells — Flash alone
+    appears in roughly 70% of slots. Deduplicating per team is what makes the
+    count below a "spell was present" measure rather than a slot count; without it
+    a team with Flash twice would be counted twice.
+
+    The two slots are deliberately treated as unordered: the dataset gives no
+    evidence that ``_sum1`` is the primary spell, so ranking them would invent
+    information.
+    """
+    prefix = f"t{team}_champ"
+    spells: set[str] = set()
+    for slot in range(1, 6):
+        for position in (1, 2):
+            value = str(row.get(f"{prefix}{slot}_sum{position}", "")).strip()
+            # Same positive-integer rule as champion ids: anything else (empty,
+            # -1) is a missing slot, not a spell.
+            if value.isdigit() and int(value) > 0:
+                spells.add(value)
+    return spells
+
+
+def spell_stats(rows: Iterable[Row]) -> dict[str, dict]:
+    """Return pick and win counts/rates for each summoner spell.
+
+    Denominator for ``pick_rate`` is **team appearances** (2 per unique match),
+    because a spell is fielded by a team, not by a match. Denominator for
+    ``win_rate_when_picked`` is the number of teams that fielded that spell.
+
+    This is observational data, not a controlled experiment: a spell's win rate
+    also reflects the champions and roles that take it. Callers must not read it
+    as a causal effect.
+    """
+    matches = _unique_rows(rows)
+    picked_teams: dict[str, int] = defaultdict(int)
+    won_teams: dict[str, int] = defaultdict(int)
+    appeared_in_match: dict[str, int] = defaultdict(int)
+    for row in matches:
+        winner = str(row.get("winner", "")).strip()
+        for team in (1, 2):
+            spells = _spells_for_team(row, team)
+            for spell in spells:
+                appeared_in_match[spell] += 1
+                picked_teams[spell] += 1
+                if winner == str(team):
+                    won_teams[spell] += 1
+
+    team_appearances = len(matches) * 2
+    return {
+        spell: {
+            "spell_id": spell,
+            "picked_teams": picked_teams[spell],
+            "matches_with_spell": appeared_in_match[spell],
+            "wins": won_teams[spell],
+            "pick_rate": _result("spell_pick_rate", picked_teams[spell], team_appearances, "percent"),
+            "win_rate_when_picked": _result(
+                "spell_win_rate_when_picked", won_teams[spell], picked_teams[spell], "percent"
+            ),
+        }
+        for spell in sorted(picked_teams, key=lambda value: int(value))
+    }
+
+
+def spell_win_split(rows: Iterable[Row], spell_id: str) -> dict:
+    """Compare team win rates with and without a specific summoner spell.
+
+    Returns both sides so a difference can be stated without implying causation:
+    ``with`` counts teams that fielded the spell, ``without`` counts teams that did
+    not, and both are measured over the same matches.
+    """
+    wanted = str(spell_id).strip()
+    if not (wanted.isdigit() and int(wanted) > 0):
+        raise ValueError("spell_id must be a positive integer")
+
+    matches = _unique_rows(rows)
+    with_teams = with_wins = 0
+    without_teams = without_wins = 0
+    for row in matches:
+        winner = str(row.get("winner", "")).strip()
+        for team in (1, 2):
+            won = winner == str(team)
+            if wanted in _spells_for_team(row, team):
+                with_teams += 1
+                with_wins += int(won)
+            else:
+                without_teams += 1
+                without_wins += int(won)
+
+    return {
+        "spell_id": wanted,
+        "with_spell": {
+            "teams": with_teams,
+            "wins": with_wins,
+            "win_rate": _result("team_win_rate_with_spell", with_wins, with_teams, "percent"),
+        },
+        "without_spell": {
+            "teams": without_teams,
+            "wins": without_wins,
+            "win_rate": _result("team_win_rate_without_spell", without_wins, without_teams, "percent"),
+        },
+    }
+
+
 def ban_stats(rows: Iterable[Row]) -> dict[str, dict]:
     """Return champion ban incidence: matches with >=1 ban / all matches.
 

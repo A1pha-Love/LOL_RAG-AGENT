@@ -91,6 +91,12 @@ def build_steps() -> list[Step]:
             fast=False,
             needs_index=True,
         ),
+        Step(
+            key="sse",
+            title="SSE 分帧契约（需服务器）",
+            argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "verify_sse_contract.py")],
+            fast=False,
+        ),
     ]
 
     # The frontend tests are offline and fast, but need Node and an installed
@@ -111,9 +117,20 @@ def build_steps() -> list[Step]:
     return steps
 
 
+def _server_reachable(host: str = "127.0.0.1", port: int = 8000) -> bool:
+    """Whether the local API is listening, checked without spawning anything."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.settimeout(0.5)
+        return probe.connect_ex((host, port)) == 0
+
+
 def run(step: Step, *, index_present: bool) -> tuple[bool, str, float]:
     if step.needs_index and not index_present:
         return True, "skipped (index not built)", 0.0
+    if step.key == "sse" and not _server_reachable():
+        return True, "skipped 服务器未运行（127.0.0.1:8000）", 0.0
 
     environment = dict(os.environ)
     environment["PYTHONIOENCODING"] = "utf-8"
@@ -133,6 +150,11 @@ def run(step: Step, *, index_present: bool) -> tuple[bool, str, float]:
     )
     elapsed = time.perf_counter() - started
     output = (completed.stdout or "") + (completed.stderr or "")
+
+    # A step that cannot run must report SKIP, never PASS: passing without running
+    # would fake coverage. Exit code 77 is the conventional "skipped" signal.
+    if completed.returncode == 77:
+        return True, f"skipped {output.strip()}", elapsed
     return completed.returncode == 0, output, elapsed
 
 
@@ -160,7 +182,7 @@ def main() -> int:
         marker = "PASS" if ok else "FAIL"
         note = ""
         if output.strip().startswith("skipped"):
-            marker, note = "SKIP", f"  {output.strip()}"
+            marker, note = "SKIP", f"  {output.strip().removeprefix('skipped ')}"
         print(f"  [{marker}] {step.title:34} {elapsed:5.1f}s{note}", flush=True)
         if args.verbose and output.strip():
             for line in output.rstrip().splitlines()[-25:]:

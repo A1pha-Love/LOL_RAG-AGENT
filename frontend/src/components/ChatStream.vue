@@ -7,6 +7,7 @@
  */
 import { nextTick, ref, watch } from 'vue'
 import MessageBubble from './MessageBubble.vue'
+import { SuggestionDeck } from '@/lib/suggestions'
 import type { UiTurn } from '@/composables/useAgent'
 
 const props = defineProps<{
@@ -26,11 +27,14 @@ const draft = ref('')
 const scroller = ref<HTMLElement | null>(null)
 const pinned = ref(true)
 
-const SUGGESTIONS = [
-  '这份数据去重后有多少场比赛？',
-  '哪个英雄被禁用次数最多？',
-  '一血发生率和一血队伍的条件胜率分别是多少？',
-]
+// One deck per visit to the empty state, so the first page is random and every
+// refresh shows a different page.
+let deck = new SuggestionDeck()
+const suggestions = ref<string[]>(deck.current())
+
+function rotateSuggestions(): void {
+  suggestions.value = deck.next()
+}
 
 function submit(): void {
   const question = draft.value.trim()
@@ -73,8 +77,38 @@ watch(
           数据为 2017-06-08 至 2017-09-06 的 EUW 排位赛，去重后 51,053 场。
           所有统计数字由本地 Python 计算，回答会标注文档来源。
         </p>
+        <div class="suggestions-head">
+          <span>试试这些问题</span>
+          <!-- Circular refresh with two curved arrows; the label appears on hover. -->
+          <button
+            type="button"
+            class="refresh"
+            aria-label="换一换"
+            title="换一换"
+            @click="rotateSuggestions"
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">
+              <path
+                d="M20 11a8 8 0 1 0-2.3 6.3"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+              />
+              <path
+                d="M20 4.5V11h-6.2"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            <span class="tip">换一换</span>
+          </button>
+        </div>
         <div class="suggestions">
-          <button v-for="item in SUGGESTIONS" :key="item" class="suggestion" @click="emit('ask', item)">
+          <button v-for="item in suggestions" :key="item" class="suggestion" @click="emit('ask', item)">
             {{ item }}
           </button>
         </div>
@@ -138,6 +172,74 @@ watch(
   margin: 0 0 18px;
   font-size: 12.5px;
   line-height: 1.8;
+}
+
+.suggestions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+  padding: 0 2px;
+  font-size: 11.5px;
+  color: var(--text-faint);
+}
+
+/* Circular icon button. `position: relative` anchors the tooltip. */
+.refresh {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, transform 0.3s;
+}
+
+.refresh:hover {
+  color: var(--accent);
+  border-color: var(--accent-border);
+  /* A half turn reads as "refreshing" without needing an animation library. */
+  transform: rotate(180deg);
+}
+
+.refresh:active {
+  transform: rotate(180deg) scale(0.92);
+}
+
+.refresh:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 2px;
+}
+
+/* Tooltip: shown on hover and on keyboard focus. */
+.refresh .tip {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%) translateY(2px);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.refresh:hover .tip,
+.refresh:focus-visible .tip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 .suggestions {

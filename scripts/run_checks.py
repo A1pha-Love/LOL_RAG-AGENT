@@ -97,6 +97,12 @@ def build_steps() -> list[Step]:
             argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "verify_sse_contract.py")],
             fast=False,
         ),
+        Step(
+            key="concurrent",
+            title="并发轮次隔离（需服务器）",
+            argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "check_concurrent_turns.py")],
+            fast=False,
+        ),
     ]
 
     # The frontend tests are offline and fast, but need Node and an installed
@@ -129,7 +135,7 @@ def _server_reachable(host: str = "127.0.0.1", port: int = 8000) -> bool:
 def run(step: Step, *, index_present: bool) -> tuple[bool, str, float]:
     if step.needs_index and not index_present:
         return True, "skipped (index not built)", 0.0
-    if step.key == "sse" and not _server_reachable():
+    if step.key in {"sse", "concurrent"} and not _server_reachable():
         return True, "skipped 服务器未运行（127.0.0.1:8000）", 0.0
 
     environment = dict(os.environ)

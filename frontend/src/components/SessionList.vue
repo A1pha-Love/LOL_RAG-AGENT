@@ -2,16 +2,24 @@
 /**
  * Session list: create, switch, and delete conversations.
  *
- * The active session id is shown because the backend can create a session
- * implicitly on the first question, and seeing the id makes that visible rather
- * than mysterious.
+ * Switching is deliberately NOT blocked while a turn is streaming. A turn can take
+ * tens of seconds, and disabling the sidebar for that whole time locks the user in
+ * place; the in-flight turn is kept outside the visible transcript so it survives a
+ * switch (see `liveTurn` in useAgent), and a marker shows which conversation is
+ * still generating.
+ *
+ * `busy` therefore only guards the destructive action (delete) and the initial load,
+ * never navigation.
  */
 import type { SessionSummary } from '@/types'
 
-defineProps<{
+const props = defineProps<{
   sessions: readonly SessionSummary[]
   activeId: string | null
-  busy: boolean
+  /** Suppresses actions during the initial load. */
+  loading: boolean
+  /** The conversation currently generating, if any. */
+  streamingId: string | null
 }>()
 
 const emit = defineEmits<{
@@ -19,6 +27,10 @@ const emit = defineEmits<{
   (event: 'select', id: string): void
   (event: 'remove', id: string): void
 }>()
+
+function isStreaming(id: string): boolean {
+  return props.streamingId === id
+}
 
 function shortId(id: string): string {
   return id.slice(0, 6)
@@ -41,7 +53,7 @@ function when(iso: string): string {
   <aside class="panel sessions">
     <header class="panel-head">
       <h2>会话</h2>
-      <button class="ghost" :disabled="busy" title="开始一个新会话" @click="emit('create')">
+      <button class="ghost" :disabled="loading" title="开始一个新会话" @click="emit('create')">
         ＋ 新建
       </button>
     </header>
@@ -53,20 +65,25 @@ function when(iso: string): string {
         <button
           class="session-item"
           :class="{ active: session.session_id === activeId }"
-          :disabled="busy"
           @click="emit('select', session.session_id)"
         >
-          <span class="title">{{ session.title || '（未命名会话）' }}</span>
+          <span class="title">
+            <!-- Never disable navigation: mark the conversation instead, so the user
+                 can see where the answer is still being written. -->
+            <span v-if="isStreaming(session.session_id)" class="spinner" title="正在生成回答" />
+            {{ session.title || '（未命名会话）' }}
+          </span>
           <span class="meta">
             <code>{{ shortId(session.session_id) }}</code>
-            <span>{{ session.turn_count }} 轮</span>
+            <span v-if="isStreaming(session.session_id)" class="generating">生成中…</span>
+            <span v-else>{{ session.turn_count }} 轮</span>
             <span>{{ when(session.updated_at) }}</span>
           </span>
         </button>
         <button
           class="icon danger"
           title="删除该会话"
-          :disabled="busy"
+          :disabled="loading || isStreaming(session.session_id)"
           @click.stop="emit('remove', session.session_id)"
         >
           ×
@@ -124,10 +141,32 @@ function when(iso: string): string {
 }
 
 .session-item .title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Marks a conversation whose answer is still being generated. */
+.spinner {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.session-item .meta .generating {
+  color: var(--accent);
 }
 
 .session-item .meta {

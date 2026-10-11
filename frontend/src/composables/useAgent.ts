@@ -49,11 +49,25 @@ export interface RetrievalView {
 let nextTurnId = 1
 let controller: AbortController | null = null
 
+/**
+ * The turn currently streaming, keyed by BOTH the id of the turn and the session it
+ * belongs to.
+ *
+ * It cannot live only in `state.turns`: switching conversations replaces that array,
+ * so the in-flight turn would be lost and switching had to be blocked while the
+ * model ran — which locked the user in place for the whole answer. Keeping the live
+ * turn here lets the stream continue in the background and be restored on return.
+ */
+let liveTurn: { sessionId: string | null; turn: UiTurn } | null = null
+
 const state = reactive({
   sessions: [] as SessionSummary[],
   activeSessionId: null as string | null,
   turns: [] as UiTurn[],
+  /** True when the *visible* conversation has a turn in flight. */
   streaming: false,
+  /** Which conversation the in-flight turn belongs to, wherever the user is now. */
+  streamingSessionId: null as string | null,
   selectedTurnId: null as number | null,
   health: null as HealthReport | null,
   banner: null as string | null,
@@ -90,6 +104,11 @@ async function refreshSessions(): Promise<void> {
   state.sessions = sessions
 }
 
+/** Whether a given conversation has a turn in flight, wherever the user is. */
+function isSessionStreaming(id: string): boolean {
+  return state.streamingSessionId === id
+}
+
 async function selectSession(id: string): Promise<void> {
   const detail = await api.getSession(id)
   state.activeSessionId = id
@@ -106,6 +125,22 @@ async function selectSession(id: string): Promise<void> {
       }
     }
   }
+
+  // A turn may still be streaming for this conversation. Its live text is newer than
+  // the stored snapshot (the answer is only persisted when the stream ends), so swap
+  // the stored placeholder for the live turn instead of showing a stale answer.
+  if (liveTurn && liveTurn.sessionId === id) {
+    const placeholder = state.turns.find((turn) => turn.question === liveTurn?.turn.question)
+    if (placeholder) {
+      state.turns.splice(state.turns.indexOf(placeholder), 1, liveTurn.turn)
+    } else {
+      state.turns.push(liveTurn.turn)
+    }
+  }
+
+  // `streaming` describes the visible conversation: switching to a different one
+  // must not leave the composer and sidebar disabled.
+  state.streaming = liveTurn !== null && liveTurn.sessionId === id
   state.selectedTurnId = state.turns.at(-1)?.id ?? null
 }
 
@@ -113,6 +148,7 @@ function startNewSession(): void {
   state.activeSessionId = null
   state.turns = []
   state.selectedTurnId = null
+  state.streaming = false
 }
 
 async function removeSession(id: string): Promise<void> {
@@ -127,17 +163,26 @@ function stop(): void {
 
 async function ask(question: string): Promise<void> {
   const trimmed = question.trim()
+  // Only the visible conversation is blocked: a turn already running in a different
+  // conversation must not stop the user from asking here.
   if (!trimmed || state.streaming) return
+
+  // Captured now, because the user may switch conversations while this runs. The
+  // backend keys the answer to this id, so the turn belongs to it regardless of what
+  // is on screen.
+  const sessionId = state.activeSessionId
 
   state.banner = null
   const turn = newTurn(trimmed, true)
   state.turns.push(turn)
   state.selectedTurnId = turn.id
   state.streaming = true
+  state.streamingSessionId = sessionId
+  liveTurn = { sessionId, turn }
   controller = new AbortController()
 
   try {
-    const events = streamTurn(trimmed, state.activeSessionId, controller.signal)
+    const events = streamTurn(trimmed, sessionId, controller.signal)
     const guarded = withIdleTimeout(events, () => controller?.abort())
 
     // Operation-level ceiling. The idle watchdog only advances when the iterator
@@ -176,7 +221,21 @@ async function ask(question: string): Promise<void> {
   } finally {
     turn.streaming = false
     turn.status = null
-    state.streaming = false
+    liveTurn = null
+    // The in-flight turn is over, so no conversation is streaming any more. This
+    // must happen unconditionally: clearing it only for the visible conversation
+    // would leave the sidebar showing "generating" forever for the one the user
+    // switched away from.
+    state.streamingSessionId = null
+    // Idle again unless the user moved to a different conversation meanwhile.
+    //
+    // Compared against the id captured at the start, not the current one: a turn
+    // that began a new conversation has `sessionId === null` while
+    // `activeSessionId` has since been filled in from the done event, so comparing
+    // the two would leave `streaming` stuck true and disable the composer.
+    if (state.activeSessionId === sessionId || sessionId === null) {
+      state.streaming = false
+    }
     controller = null
   }
 
@@ -261,6 +320,7 @@ export const store = {
   refreshHealth,
   refreshSessions,
   selectSession,
+  isSessionStreaming,
   startNewSession,
   removeSession,
   ask,

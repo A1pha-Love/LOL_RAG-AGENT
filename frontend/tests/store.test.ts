@@ -79,12 +79,18 @@ beforeEach(() => {
 })
 
 describe('ask', () => {
-  it('clears the streaming flag and records the answer', async () => {
+  it('clears the streaming flag when the turn opened a new conversation', async () => {
+    // A turn that starts with no session (the server creates one on the first
+    // question) must still return the UI to idle. Comparing the session id captured
+    // at the start against the one the done event fills in would leave `streaming`
+    // stuck true and disable the composer — a regression this asserts against.
     const store = await loadStore()
+    expect(store.state.activeSessionId).toBeNull()
 
     await store.ask('问题')
 
     expect(store.state.streaming).toBe(false)
+    expect(store.state.streamingSessionId).toBeNull()
     expect(store.state.turns).toHaveLength(1)
     expect(store.state.turns[0].answer).toBe('答案')
   })

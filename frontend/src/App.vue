@@ -77,7 +77,8 @@ function onSelectTurn(id: number): void {
       <SessionList
         :sessions="state.sessions"
         :active-id="state.activeSessionId"
-        :busy="loading || state.streaming"
+        :loading="loading"
+        :streaming-id="state.streamingSessionId"
         @create="store.startNewSession()"
         @select="(id: string) => withLoading(() => store.selectSession(id))"
         @remove="(id: string) => withLoading(() => store.removeSession(id))"

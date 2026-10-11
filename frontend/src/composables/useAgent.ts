@@ -230,7 +230,15 @@ async function retry(turnId: number): Promise<void> {
 }
 
 function newTurn(question: string, streaming: boolean): UiTurn {
-  return {
+  // Must be reactive in its own right.
+  //
+  // A plain object pushed into a `reactive` array is only reachable through that
+  // array's proxy; the reference kept here would stay raw, so `turn.answer += …`
+  // inside applyEvent would bypass the proxy entirely and the template would never
+  // re-render. The symptom is an answer that only appears after reloading the
+  // conversation. Wrapping here makes the captured reference and the stored proxy
+  // the same object.
+  return reactive<UiTurn>({
     id: nextTurnId++,
     question,
     answer: '',
@@ -243,7 +251,7 @@ function newTurn(question: string, streaming: boolean): UiTurn {
     toolCalls: [],
     chunks: [],
     seconds: null,
-  }
+  })
 }
 
 export const store = {

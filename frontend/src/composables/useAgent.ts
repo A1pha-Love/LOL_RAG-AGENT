@@ -12,7 +12,7 @@
 
 import { computed, reactive } from 'vue'
 import { api, streamTurn } from '@/lib/api'
-import { StreamTimeoutError, withIdleTimeout } from '@/lib/timeout'
+import { StreamTimeoutError, TOTAL_TIMEOUT_MS, withIdleTimeout } from '@/lib/timeout'
 import type {
   HealthReport,
   RetrievedChunk,
@@ -138,8 +138,27 @@ async function ask(question: string): Promise<void> {
 
   try {
     const events = streamTurn(trimmed, state.activeSessionId, controller.signal)
-    for await (const event of withIdleTimeout(events, () => controller?.abort())) {
-      applyEvent(turn, event)
+    const guarded = withIdleTimeout(events, () => controller?.abort())
+
+    // Operation-level ceiling. The idle watchdog only advances when the iterator
+    // is awaited, so it cannot rescue a fetch that never returns a response at
+    // all; this watchdog fires on wall-clock time regardless of where the turn is
+    // stuck, and aborting the controller releases the fetch.
+    let watchdog: ReturnType<typeof setTimeout> | undefined
+    const deadline = new Promise<never>((_, reject) => {
+      watchdog = setTimeout(() => {
+        controller?.abort()
+        reject(new StreamTimeoutError(TOTAL_TIMEOUT_MS / 1000, 'idle'))
+      }, TOTAL_TIMEOUT_MS)
+    })
+
+    try {
+      const pump = async () => {
+        for await (const event of guarded) applyEvent(turn, event)
+      }
+      await Promise.race([pump(), deadline])
+    } finally {
+      if (watchdog) clearTimeout(watchdog)
     }
   } catch (error) {
     if (error instanceof StreamTimeoutError) {
@@ -159,8 +178,13 @@ async function ask(question: string): Promise<void> {
     turn.status = null
     state.streaming = false
     controller = null
-    await refreshSessions().catch(() => undefined)
   }
+
+  // Deliberately outside the try/finally and not awaited: refreshing the sidebar
+  // is cosmetic, and awaiting it here meant a refresh that never settled left
+  // ask() unresolved — with `busy` still true the composer, the suggested
+  // questions and the session list all stopped responding.
+  void refreshSessions().catch(() => undefined)
 }
 
 function applyEvent(turn: UiTurn, event: StreamEvent): void {

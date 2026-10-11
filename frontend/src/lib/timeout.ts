@@ -16,6 +16,15 @@ export const FIRST_EVENT_TIMEOUT_MS = 60_000
 /** Longest tolerated gap once the turn has started producing events. */
 export const IDLE_TIMEOUT_MS = 45_000
 
+/**
+ * Absolute ceiling for one turn.
+ *
+ * The idle watchdog covers a stalled read, but it cannot cover a `fetch` that
+ * hangs before any response is returned (connection setup, or a proxy that reads
+ * the request and never answers). This bound guarantees the UI always recovers.
+ */
+export const TOTAL_TIMEOUT_MS = 150_000
+
 export class StreamTimeoutError extends Error {
   readonly seconds: number
   readonly phase: 'first' | 'idle'
@@ -75,7 +84,10 @@ export async function* withIdleTimeout<T>(
       yield result.value
     }
   } finally {
-    // Ensure the source generator is closed, releasing its reader lock.
-    await iterator.return?.(undefined as never).catch(() => undefined)
+    // Releasing the generator must not wait for a pending read: on a stalled
+    // connection `return()` would block on the same read that never resolves, so
+    // the failure would hang instead of surfacing. `onTimeout()` has already
+    // aborted the request, which is what actually unblocks the reader.
+    void iterator.return?.(undefined as never)?.catch(() => undefined)
   }
 }

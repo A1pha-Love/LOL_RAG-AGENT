@@ -34,6 +34,7 @@ class Step:
     argv: list[str]
     fast: bool = True
     needs_index: bool = False
+    cwd: Path | None = None
 
     @property
     def display(self) -> str:
@@ -49,9 +50,20 @@ def _python_files(*directories: str) -> list[str]:
     return files
 
 
+def _node_npm() -> str | None:
+    """Path to npm.cmd, or None when the frontend toolchain is unavailable."""
+    import shutil
+
+    for name in ("npm.cmd", "npm"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
 def build_steps() -> list[Step]:
     tests = PROJECT_ROOT / "tests"
-    return [
+    steps = [
         Step(
             key="compile",
             title="语法编译（src / scripts / tests）",
@@ -81,6 +93,23 @@ def build_steps() -> list[Step]:
         ),
     ]
 
+    # The frontend tests are offline and fast, but need Node and an installed
+    # node_modules, so this step is skipped rather than failed when absent —
+    # otherwise the check would demand a toolchain the backend work does not need.
+    npm = _node_npm()
+    frontend = PROJECT_ROOT / "frontend"
+    if npm and (frontend / "node_modules").is_dir():
+        steps.append(
+            Step(
+                key="frontend",
+                title="前端单测（vitest）",
+                argv=[npm, "--prefix", str(frontend), "test", "--silent"],
+                fast=True,
+                cwd=frontend,
+            )
+        )
+    return steps
+
 
 def run(step: Step, *, index_present: bool) -> tuple[bool, str, float]:
     if step.needs_index and not index_present:
@@ -95,7 +124,7 @@ def run(step: Step, *, index_present: bool) -> tuple[bool, str, float]:
     started = time.perf_counter()
     completed = subprocess.run(
         step.argv,
-        cwd=PROJECT_ROOT,
+        cwd=step.cwd or PROJECT_ROOT,
         env=environment,
         capture_output=True,
         text=True,

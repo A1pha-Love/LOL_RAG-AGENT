@@ -122,6 +122,14 @@ def _validate_limit(limit: int | None) -> None:
         raise ValueError("limit must be a positive integer")
 
 
+# A ranking question is answered from the top few rows, so returning the whole
+# champion table is pure waste: all 138 rows serialise to ~55,000 characters
+# (~13x the top-10 payload), which the model must read before it can answer and
+# which measurably delays the first token. Callers that genuinely want the full
+# table can pass an explicit larger limit.
+DEFAULT_RANKING_LIMIT = 20
+
+
 def get_match_count(csv_path: str | Path | None = None) -> dict[str, Any]:
     """Count unique matches."""
     return metrics.match_count(_rows(csv_path))
@@ -133,10 +141,15 @@ def get_champion_stats(
     limit: int | None = None,
     csv_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Return champion appearance and win statistics, optionally filtered/sorted."""
+    """Return champion appearance and win statistics, optionally filtered/sorted.
+
+    When no champion is named, results are ranked and capped at
+    ``DEFAULT_RANKING_LIMIT`` unless an explicit ``limit`` is given.
+    """
     _validate_limit(limit)
     if sort_by not in {"appearances", "win_rate"}:
         raise ValueError("sort_by must be 'appearances' or 'win_rate'")
+    effective_limit = limit if limit is not None else DEFAULT_RANKING_LIMIT
     all_stats = metrics.champion_stats(_rows(csv_path))
     requested_id = _resolve_champion_id(champion_id) if champion_id is not None else None
     if champion_id is not None:
@@ -150,16 +163,16 @@ def get_champion_stats(
                 int(item["champion_id"]),
             )
         )
-        if limit is not None:
-            selected = selected[:limit]
+        selected = selected[:effective_limit]
     _add_champion_labels(selected)
     return {
         "metric": "champion_stats",
         "sort_by": sort_by,
-        "limit": limit,
+        "limit": effective_limit,
         "champion_query": None if champion_id is None else str(champion_id),
         "champion_id_filter": requested_id,
         "mapping_source": "Riot Data Dragon 7.17.1 (zh_CN)",
+        "total_champions": len(all_stats),
         "results": selected,
     }
 
@@ -170,10 +183,15 @@ def get_ban_stats(
     limit: int | None = None,
     csv_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Return ban match counts/rates, optionally filtered/sorted."""
+    """Return ban match counts/rates, optionally filtered/sorted.
+
+    When no champion is named, results are ranked and capped at
+    ``DEFAULT_RANKING_LIMIT`` unless an explicit ``limit`` is given.
+    """
     _validate_limit(limit)
     if sort_by not in {"banned_matches", "ban_rate"}:
         raise ValueError("sort_by must be 'banned_matches' or 'ban_rate'")
+    effective_limit = limit if limit is not None else DEFAULT_RANKING_LIMIT
     all_stats = metrics.ban_stats(_rows(csv_path))
     requested_id = _resolve_champion_id(champion_id) if champion_id is not None else None
     if champion_id is not None:
@@ -187,13 +205,13 @@ def get_ban_stats(
                 int(item["champion_id"]),
             )
         )
-        if limit is not None:
-            selected = selected[:limit]
+        selected = selected[:effective_limit]
     _add_champion_labels(selected)
     return {
         "metric": "ban_stats",
         "sort_by": sort_by,
-        "limit": limit,
+        "limit": effective_limit,
+        "total_champions": len(all_stats),
         "champion_query": None if champion_id is None else str(champion_id),
         "champion_id_filter": requested_id,
         "mapping_source": "Riot Data Dragon 7.17.1 (zh_CN)",

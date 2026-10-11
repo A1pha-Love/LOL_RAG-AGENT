@@ -189,6 +189,64 @@ def test_format_history_respects_the_char_budget() -> None:
 
 
 # --------------------------------------------------------------------------
+# history trimming
+# --------------------------------------------------------------------------
+
+def test_trimming_keeps_everything_that_fits() -> None:
+    turns = [_turn("user", "短问题") for _ in range(5)]
+    assert conv.trimmed_history(turns, max_chars=10_000) == turns
+
+
+def test_trimming_keeps_the_most_recent_turns() -> None:
+    """Recent context is what resolves a follow-up, so it must survive."""
+    turns = [_turn("user", f"问题{index}" + "x" * 100) for index in range(10)]
+    kept = conv.trimmed_history(turns, max_chars=300)
+    assert kept, "must keep at least the newest turn"
+    assert kept[-1] is turns[-1]
+    assert turns[0] not in kept, "the oldest turns are the ones dropped"
+    assert len(kept) < len(turns)
+
+
+def test_trimming_never_exceeds_the_budget_when_it_can_avoid_it() -> None:
+    turns = [_turn("user", "x" * 100) for _ in range(10)]
+    kept = conv.trimmed_history(turns, max_chars=450)
+    assert sum(len(turn.content) for turn in kept) <= 450
+
+
+def test_a_single_oversized_turn_is_truncated_not_dropped() -> None:
+    """Dropping the newest answer would lose the context a follow-up needs."""
+    turns = [_turn("user", "问题"), _turn("assistant", "答" * 50_000)]
+    kept = conv.trimmed_history(turns, max_chars=1_000, max_turn_chars=500)
+    assert len(kept) == 2
+    assert kept[1].content.endswith("（内容过长，已截断）")
+    assert len(kept[1].content) < 600
+
+
+def test_trimming_an_empty_history_is_empty() -> None:
+    assert conv.trimmed_history([]) == []
+
+
+def test_trimming_preserves_turn_metadata() -> None:
+    turn = conv.Turn(
+        role="assistant",
+        content="很短",
+        created_at="2026-01-01T00:00:00+00:00",
+        retrieval_query="检索词",
+        tool_calls=("a", "b"),
+    )
+    kept = conv.trimmed_history([turn], max_chars=1000)
+    assert kept[0].retrieval_query == "检索词"
+    assert kept[0].tool_calls == ("a", "b")
+
+
+def test_history_budget_is_comfortably_above_a_normal_session() -> None:
+    """Guards against the budget being lowered until it silently drops context."""
+    typical_round_chars = 1_200
+    assert conv.MAX_HISTORY_CHARS / typical_round_chars >= 20
+    assert conv.MAX_REWRITE_CHARS < conv.MAX_HISTORY_CHARS
+
+
+# --------------------------------------------------------------------------
 # rewriting: the parts that must work without a model
 # --------------------------------------------------------------------------
 

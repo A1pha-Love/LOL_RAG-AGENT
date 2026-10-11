@@ -43,7 +43,21 @@ SESSION_DB_PATH = Path(
 )
 
 MAX_REWRITE_TURNS = 4
-MAX_HISTORY_CHARS = 2000
+
+# Character budget for the transcript handed to the model, and the cap applied to
+# a single turn within it.
+#
+# Measured: a stored turn averages ~400 characters, and one Q&A round is ~1,200.
+# 60,000 characters is roughly 47% of the model's 128K context, leaving room for
+# the system prompt, tool results and the answer, and holds ~48 rounds — far more
+# than the 2.5-round average session. Beyond that the oldest rounds are dropped.
+#
+# Deliberately a deterministic trim rather than an LLM summary: a summary would
+# cost an extra model call on every long session to preserve context that a
+# retrieval-augmented answer can reconstruct from the knowledge base anyway.
+MAX_HISTORY_CHARS = 60_000
+MAX_HISTORY_TURN_CHARS = 6_000
+MAX_REWRITE_CHARS = 2000
 
 REWRITE_PROMPT = """你在为一个中文问答系统改写检索查询。
 
@@ -279,7 +293,46 @@ class SessionStore:
 # retrieval query rewriting
 # --------------------------------------------------------------------------
 
-def format_history(turns: list[Turn], max_chars: int = MAX_HISTORY_CHARS) -> str:
+def trimmed_history(
+    turns: list[Turn],
+    max_chars: int = MAX_HISTORY_CHARS,
+    max_turn_chars: int = MAX_HISTORY_TURN_CHARS,
+) -> list[Turn]:
+    """The most recent turns that fit the character budget, oldest dropped first.
+
+    Recent context is what resolves follow-up references, so the budget is spent
+    from the newest turn backwards. Individual oversized turns are truncated
+    rather than dropped, because discarding the newest answer would lose exactly
+    the context a follow-up depends on.
+    """
+    if not turns:
+        return []
+
+    def clamp(turn: Turn) -> Turn:
+        if len(turn.content) <= max_turn_chars:
+            return turn
+        return Turn(
+            role=turn.role,
+            content=turn.content[:max_turn_chars] + "…（内容过长，已截断）",
+            created_at=turn.created_at,
+            retrieval_query=turn.retrieval_query,
+            tool_calls=turn.tool_calls,
+        )
+
+    kept: list[Turn] = []
+    used = 0
+    for turn in reversed(turns):
+        candidate = clamp(turn)
+        size = len(candidate.content)
+        if kept and used + size > max_chars:
+            break
+        kept.append(candidate)
+        used += size
+    kept.reverse()
+    return kept
+
+
+def format_history(turns: list[Turn], max_chars: int = MAX_REWRITE_CHARS) -> str:
     """Render turns as a compact transcript for the rewrite prompt."""
     if not turns:
         return "（无历史，这是第一轮）"

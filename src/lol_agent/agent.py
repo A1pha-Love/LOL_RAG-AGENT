@@ -16,7 +16,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 
 from . import tools as data_tools
 from .config import chat_base_url, require_api_key
-from .conversation import SessionStore, Turn, rewrite_query
+from .conversation import SessionStore, Turn, rewrite_query, trimmed_history
 from .knowledge import KnowledgeAPIError, KnowledgeIndexError, search_knowledge
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -240,19 +240,21 @@ def prepare_turn(session: Any, question: str) -> TurnContext:
     streaming starts, so the rewritten query can be reported to the client as a
     first event rather than discovered afterwards.
     """
-    context = TurnContext(session_id=session.session_id, history=session.history())
+    context = TurnContext(session_id=session.session_id, history=trimmed_history(session.turns))
     context.prepare(question)
     return context
 
 
 def session_messages(session: Any) -> list[Any]:
-    """Rebuild the transcript as LangChain messages.
+    """Rebuild the transcript as LangChain messages, within the history budget.
 
     Assistant replies are included: the model needs its own earlier answers to
-    interpret follow-ups such as "他的胜率呢".
+    interpret follow-ups such as "他的胜率呢". The oldest rounds are dropped once
+    the budget is exceeded, so a long session cannot grow the prompt until the
+    model starts rejecting it.
     """
     messages: list[Any] = []
-    for turn in session.turns:
+    for turn in trimmed_history(session.turns):
         if turn.role == "user":
             messages.append(HumanMessage(content=turn.content))
         else:

@@ -8,6 +8,12 @@
 
 状态：初稿。以当前 ShuJuYuan/games.csv 的对局级字段为基础；原始数据集字段说明仍待核实。英雄查询支持 docs/champion_mapping_7_17_1.json 中的官方中文 name、中文 title、英文标识符和保留别名；映射是 7.17.1 快照，不表示逐场比赛的精确补丁版本。
 
+> **归档说明（2026-10-11）**：本文件的正文保持原样，不改写历史记录。但下文「4. 待确认事项」
+> 中的问题**此后已逐条核实**，结论分别落入知识库的
+> `project_data_audit.md`、`project_field_reference.md`、`project_dedup_rule.md`、
+> `project_champion_name_mapping.md` 与 `project_metrics_core.md`。
+> 需要当前口径时请以这些文档为准，不要把本节视为仍未解决的问题清单。
+
 ## 1. 数据范围与计算约定
 
 - 原始文件约 51,490 行、61 列；`gameId` 去重后预计 51,053 场。重复 `gameId` 的记录逐字段相同，因此分析时按 `gameId` 去重，原始 CSV 保持不变。
@@ -44,6 +50,19 @@
 7. 队伍取得首个 Baron 后胜率如何？并提醒这不表示因果关系。
 
 ## 4. 待确认事项
+
+> 以下为**原始初稿遗留的问题清单**，保留以说明当时的认知边界。逐条现状：
+>
+> | 原问题 | 现状 |
+> |---|---|
+> | 原始数据说明中字段的精确定义 | **已核实** → `kbase/project_field_reference.md` |
+> | 是否存在同一英雄被双方同时选取、重复禁用等异常 | **已核实** → `kbase/project_dedup_rule.md`、`project_data_audit.md`（`-1` 为空禁用位哨兵） |
+> | 英雄名称映射覆盖情况与跨补丁边界 | **已核实** → `kbase/project_champion_name_mapping.md`、`conflict_urgot_rename.md` |
+> | 是否按 `seasonId` 切片 | **已确认不可行**：`seasonId` 恒为 9，切片无意义 |
+> | 无法回答当前版本分路胜率 | **确认成立**：CSV 无逐场 patch、无分路字段 |
+> | 禁用率的槽位口径需另起名 | **已确立** → `kbase/project_metrics_ban_event.md` |
+>
+> 即：本节不再是未决问题，仅为历史记录。
 
 - 原始数据说明中 `winner`、`first*`、ban/pick、时长、时间戳和队伍编号的精确定义。
 - 当前数据是否存在同一英雄被双方同时选取、重复禁用或同队重复选取的异常；如存在，指标需按上表口径处理并在结果中注明。

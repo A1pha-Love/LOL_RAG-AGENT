@@ -9,6 +9,9 @@ __pycache__/
 # --- Secrets (never commit) ---
 .env
 .env.*
+# ...but the template must be tracked, or a fresh checkout has no configuration
+# reference. The negation has to come after the pattern it overrides.
+!.env.example
 
 # --- Data: raw inputs and regenerable payloads ---
 # The ranked-match CSV is the project's dataset; the Data Dragon snapshots are

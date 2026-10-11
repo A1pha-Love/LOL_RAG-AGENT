@@ -24,25 +24,33 @@
 
 ## 配置
 
-项目根目录的 `.env` 至少配置以下变量：
+复制 `.env.example` 为 `.env`，填入 API Key 即可——**其余变量都有可用的默认值**：
 
-```dotenv
-DASHSCOPE_API_KEY=你的百炼APIKey
-DASHSCOPE_WORKSPACE_ID=你的WorkspaceID
-DASHSCOPE_REGION=cn-beijing
-QWEN_CHAT_MODEL=qwen3.8-flash
-QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding
+```powershell
+Copy-Item .env.example .env
+# 然后编辑 .env，填入 DASHSCOPE_API_KEY
 ```
 
-不要把 `.env` 提交到版本库。API Key 同时用于对话与向量请求；调用会产生相应服务用量。
+只有 `DASHSCOPE_API_KEY` 是必填项。`.env.example` 里逐项说明了用途与默认值，其中
+两点最容易踩坑：
+
+- **端点形态**：默认使用通用域名 `https://dashscope.aliyuncs.com`，**仅凭 API Key 认证**。
+  若设了 `DASHSCOPE_WORKSPACE_ID`，服务端会改用 workspace 专属域名并要求 Key 属于该
+  业务空间；Key 与空间不匹配时会报 `Workspace endpoint access denied`，看起来像 Key 失效，
+  实际是空间不匹配。**所以除非确认 Key 属于该空间，否则不要设置它。**
+- **`QWEN_EMBEDDING_MODEL`**：换模型会让已存向量全部失效，必须重跑
+  `scripts/index_knowledge.py`。
+
+不要把 `.env` 提交到版本库（已在 `.gitignore` 中）。API Key 同时用于对话与向量请求；
+调用会产生相应服务用量。
 
 ## 安装和运行
 
 在项目根目录使用已配置好的虚拟环境：
 
 ```powershell
-# 单轮问答
-.\.venv\Scripts\python.exe scripts\chat_agent.py "这份数据去重后有多少场比赛？"
+# 无状态单轮问答（不读写会话库）
+.\.venv\Scripts\python.exe scripts\chat_session.py --once "这份数据去重后有多少场比赛？"
 
 # 多轮对话（会话持久化到 .cache/sessions.db）
 .\.venv\Scripts\python.exe scripts\chat_session.py

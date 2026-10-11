@@ -1,0 +1,41 @@
+# Line-ending and text normalisation.
+#
+# Why this file exists: an SSE framing bug was caused purely by an assumption
+# about line endings. The backend emitted CRLF while the frontend parser searched
+# for LF LF, so no frame boundary was ever found and every event was buffered into
+# one unparsable blob. Mixed endings across a repository make that class of bug easy
+# to introduce and hard to see.
+#
+# Policy: store LF in the repository, check out LF everywhere. The project is
+# developed on Windows and Windows tools cope with LF; normalising on commit only
+# (leaving CRLF in the working tree) would keep the inconsistency in place.
+* text=auto eol=lf
+
+# Windows-only batch files still need CRLF to run.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets must never be normalised.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.xlsx binary
+*.docx binary
+*.db binary
+*.csv binary
+*.json.gz binary
+
+# Generated files are excluded from diffs and language statistics: they are
+# produced by the build or by indexing, so a diff of them carries no review value.
+frontend/dist/** -diff -linguist-generated
+reports/knowledge.db -diff -linguist-generated
+frontend/package-lock.json -diff -linguist-generated
+.cache/** -diff -linguist-generated
+
+# Keep the dataset out of language detection: it is data, not source.
+ShuJuYuan/** -linguist-vendored

@@ -97,12 +97,29 @@ def search_project_knowledge(query: str, top_k: int = 8) -> dict[str, object]:
     """
     effective_query = current_retrieval_query(query)
     try:
-        return {
-            "results": search_knowledge(effective_query, top_k),
-            "retrieval_query": effective_query,
-        }
+        hits = search_knowledge(effective_query, top_k)
     except (KnowledgeAPIError, KnowledgeIndexError, ValueError) as exc:
-        return {"error": str(exc), "results": [], "retrieval_query": effective_query}
+        return {"kind": "retrieval", "error": str(exc), "results": [], "retrieval_query": effective_query}
+    # `kind` and the trimmed shape exist for the UI: its retrieval panel shows
+    # which chunks matched and with what score, and streaming whole chunks would
+    # bloat the payload for no benefit.
+    return {
+        "kind": "retrieval",
+        "retrieval_query": effective_query,
+        "results": [
+            {
+                "source": hit.get("source"),
+                "heading_path": hit.get("heading_path"),
+                "category": hit.get("category"),
+                "version": hit.get("version"),
+                "similarity": hit.get("similarity"),
+                "rerank_score": hit.get("rerank_score"),
+                "rerank_rank": hit.get("rerank_rank"),
+                "preview": (hit.get("content") or "")[:180],
+            }
+            for hit in hits
+        ],
+    }
 
 
 AGENT_TOOLS = [

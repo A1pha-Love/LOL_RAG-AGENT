@@ -23,6 +23,8 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -172,3 +174,28 @@ async def ask(body: AskRequest):
     # ping=5 keeps bytes flowing through proxies during the model's silent
     # "thinking" phase, which is otherwise several seconds of nothing.
     return EventSourceResponse(event_source(), ping=5)
+
+
+# --------------------------------------------------------------------------
+# static frontend (optional)
+# --------------------------------------------------------------------------
+
+# When the frontend has been built, serve it from this same origin. That removes
+# the dev proxy from the picture and means the whole app runs on one port. In
+# development `vite dev` serves the UI and proxies /api here instead.
+_DIST = PROJECT_ROOT / "frontend" / "dist"
+
+if _DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    def index() -> FileResponse:
+        return FileResponse(_DIST / "index.html")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def spa_fallback(path: str) -> FileResponse:
+        """Serve built files, falling back to index.html for client-side routes."""
+        candidate = (_DIST / path).resolve()
+        if _DIST in candidate.parents and candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(_DIST / "index.html")

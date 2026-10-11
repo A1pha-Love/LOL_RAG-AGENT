@@ -9,6 +9,7 @@ Event sequence for one turn:
     {"type": "status",  "phase": "rewriting", "message": ...}  # start of the turn
     {"type": "rewrite", "query": ..., "fallback": ...}         # what retrieval will search
     {"type": "tools",   "names": [...]}                        # tools the model chose
+    {"type": "retrieval", "retrieval_query": ..., "results": [...]}  # matched chunks
     {"type": "status",  "phase": "answering", "message": ...}  # model is generating
     {"type": "delta",   "text": "..."}                         # answer fragments
     {"type": "done",    "answer": ..., "seconds": ...}         # final, persisted answer
@@ -25,6 +26,7 @@ disconnects mid-answer does not leave a half-written transcript behind.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import AsyncIterator
 from typing import Any
@@ -97,6 +99,9 @@ async def stream_turn(
                     messages = (update or {}).get("messages")
                     if isinstance(messages, list) and messages:
                         final_messages = messages
+                        retrieved = _retrieval_payload(messages)
+                        if retrieved is not None:
+                            yield {"type": "retrieval", **retrieved}
                 context_tools = list(context.tool_calls)
                 if context_tools != reported_tools:
                     reported_tools = context_tools
@@ -150,6 +155,34 @@ def _chunk_text(chunk: Any) -> str:
                 parts.append(item)
         return "".join(parts)
     return ""
+
+
+def _retrieval_payload(messages: list[Any]) -> dict[str, Any] | None:
+    """Extract the last knowledge-retrieval result from an update, if any.
+
+    The retrieval panel needs the matched chunks (source, heading path, score),
+    and LangGraph's ``updates`` channel carries the tool's return value. Returns
+    None when the update contains no retrieval result.
+    """
+    for message in reversed(messages or []):
+        if getattr(message, "type", None) != "tool":
+            continue
+        if getattr(message, "name", None) != "search_project_knowledge":
+            continue
+        content = getattr(message, "content", None)
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except json.JSONDecodeError:
+                return None
+        if not isinstance(content, dict) or content.get("kind") != "retrieval":
+            return None
+        return {
+            "retrieval_query": content.get("retrieval_query"),
+            "results": content.get("results") or [],
+            "error": content.get("error"),
+        }
+    return None
 
 
 def _last_message_text(messages: list[Any]) -> str:

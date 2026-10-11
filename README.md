@@ -59,6 +59,34 @@ QWEN_EMBEDDING_MODEL=qwen3.7-text-embedding
 
 **后端只监听回环地址。** 它没有身份认证，对外暴露会让任何人都能读取会话记录并消耗 API 配额。
 
+## 前端界面（Vue 3 + Vite + TypeScript）
+
+三栏布局：会话列表 / 对话流 / **检索过程面板**（改写后的查询、工具调用、命中分块与分数）。
+
+```powershell
+# 开发模式（热更新；/api 由 Vite 代理到后端）
+cd frontend
+npm install
+npm run dev            # http://127.0.0.1:5173
+```
+
+生产模式为单端口：先构建，再由后端托管界面。
+
+```powershell
+cd frontend
+npm run build          # 产物写入 frontend/dist
+cd ..
+.\.venv\Scripts\python.exe scripts\serve.py
+```
+
+后端启动时若发现 `frontend/dist` 存在，会在同一端口挂载界面，直接访问
+`http://127.0.0.1:8000` 即可，无需再开 Vite。
+
+**npm 注意事项**：仓库根与 `frontend/` 下都放了 `.npmrc`，把 npm 缓存指向项目内
+`.cache/npm`。默认缓存位于工作区之外，在受限沙箱下会导致每次安装都以 `EPERM`
+失败。此外 npm 需要用管道创建子进程，沙箱会拒绝该操作，因此 `npm install`
+/ `npm run build` 需在放宽权限的终端中执行。
+
 离线检查（不调用任何模型 API，零配额）：
 
 ```powershell

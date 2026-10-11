@@ -1,0 +1,141 @@
+/**
+ * Theme tokens.
+ *
+ * One dark theme, defined as variables so the palette can be swapped in a single
+ * place. Values are deliberately low-contrast on the surfaces and high-contrast
+ * on text: this is a reading-heavy tool (long Chinese answers, numeric tables),
+ * so legibility matters more than visual punch.
+ */
+
+:root {
+  --surface: #14161b;
+  --surface-2: #1b1e25;
+  --surface-3: #242832;
+  --border: #2b3040;
+  --text: #e6e9f0;
+  --text-muted: #a8b0c2;
+  --text-faint: #6f7891;
+  --accent: #6ea8fe;
+  --accent-soft: rgba(110, 168, 254, 0.13);
+  --accent-border: rgba(110, 168, 254, 0.38);
+  --ok: #4ec9a0;
+  --warn: #e0b050;
+  --danger: #f07178;
+  --code-bg: #0f1116;
+  /* CJK-aware stack: the fallbacks matter, since answers are mostly Chinese. */
+  --sans: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', 'PingFang SC',
+    'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
+  --mono: 'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 650;
+}
+
+/* Shared panel chrome, used by the three columns. */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+button {
+  font-family: inherit;
+}
+
+.ghost {
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.ghost:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.ghost:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.icon {
+  flex: none;
+  width: 26px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.icon.danger:hover {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger);
+}
+
+/* Scrollbars: thin and unobtrusive, since all three columns scroll. */
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}

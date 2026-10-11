@@ -88,3 +88,42 @@ function shuffled(values: number[]): number[] {
   }
   return result
 }
+
+/**
+ * One independent deck per conversation turn.
+ *
+ * Each turn's follow-up row refreshes on its own, so a single shared deck would
+ * make one row jump when another is refreshed.
+ */
+export class SuggestionDecks {
+  private readonly decks = new Map<number, SuggestionDeck>()
+
+  constructor(private readonly pool: readonly string[] = SUGGESTION_POOL) {}
+
+  /** Current suggestions for a turn, creating its deck on first use. */
+  current(turnId: number): string[] {
+    return this.deckFor(turnId).current()
+  }
+
+  /** Advance one page for a turn and return the new suggestions. */
+  rotate(turnId: number): string[] {
+    return this.deckFor(turnId).next()
+  }
+
+  /** Drop decks for turns that no longer exist, so the map cannot grow forever. */
+  retain(turnIds: readonly number[]): void {
+    const keep = new Set(turnIds)
+    for (const key of [...this.decks.keys()]) {
+      if (!keep.has(key)) this.decks.delete(key)
+    }
+  }
+
+  private deckFor(turnId: number): SuggestionDeck {
+    let deck = this.decks.get(turnId)
+    if (!deck) {
+      deck = new SuggestionDeck(this.pool, SUGGESTIONS_PER_PAGE)
+      this.decks.set(turnId, deck)
+    }
+    return deck
+  }
+}

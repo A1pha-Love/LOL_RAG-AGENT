@@ -8,16 +8,21 @@
  * never inject markup.
  */
 import { computed } from 'vue'
+import RefreshButton from './RefreshButton.vue'
 import type { UiTurn } from '@/composables/useAgent'
 
 const props = defineProps<{
   turn: UiTurn
   selected: boolean
+  /** Follow-up questions offered under a finished answer. */
+  followUps?: readonly string[]
 }>()
 
 const emit = defineEmits<{
   (event: 'select'): void
   (event: 'retry'): void
+  (event: 'ask', question: string): void
+  (event: 'rotate-follow-ups'): void
 }>()
 
 /** Escape first, then apply inline formatting — never the other way round. */
@@ -193,6 +198,26 @@ const blocks = computed(() => parse(props.turn.answer))
         查询已改写
       </span>
     </footer>
+
+    <!-- Follow-up prompts: only once the answer is complete, so nothing suggests a
+         new question while this one is still being written. -->
+    <div v-if="!turn.streaming && !turn.error && followUps?.length" class="follow-ups">
+      <div class="follow-ups-head">
+        <span>继续问</span>
+        <RefreshButton @rotate="emit('rotate-follow-ups')" />
+      </div>
+      <div class="follow-up-list">
+        <button
+          v-for="item in followUps"
+          :key="item"
+          type="button"
+          class="follow-up"
+          @click.stop="emit('ask', item)"
+        >
+          {{ item }}
+        </button>
+      </div>
+    </div>
   </article>
 </template>
 
@@ -366,6 +391,46 @@ const blocks = computed(() => parse(props.turn.answer))
 
 .retry:hover {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.follow-ups {
+  margin: 10px 0 0 30px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--border);
+}
+
+.follow-ups-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.follow-up-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.follow-up {
+  max-width: 100%;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+}
+
+.follow-up:hover {
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 .foot {

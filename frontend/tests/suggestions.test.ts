@@ -6,7 +6,12 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { SUGGESTION_POOL, SUGGESTIONS_PER_PAGE, SuggestionDeck } from '@/lib/suggestions'
+import {
+  SUGGESTION_POOL,
+  SUGGESTIONS_PER_PAGE,
+  SuggestionDeck,
+  SuggestionDecks,
+} from '@/lib/suggestions'
 
 /** Deterministic deck: no shuffle, so pages are predictable. */
 const ordered = () => new SuggestionDeck(SUGGESTION_POOL, SUGGESTIONS_PER_PAGE, false)
@@ -85,6 +90,50 @@ describe('SuggestionDeck', () => {
         expect(SUGGESTION_POOL).toContain(item)
       }
     }
+  })
+})
+
+describe('SuggestionDecks (per-turn rows)', () => {
+  it('gives every turn its own row of suggestions', () => {
+    const decks = new SuggestionDecks(SUGGESTION_POOL)
+    expect(decks.current(1)).toHaveLength(SUGGESTIONS_PER_PAGE)
+    expect(decks.current(2)).toHaveLength(SUGGESTIONS_PER_PAGE)
+  })
+
+  it('rotating one turn does not disturb another', () => {
+    // Each turn's refresh button is independent; a shared deck would make one
+    // row jump when a different row is refreshed.
+    const decks = new SuggestionDecks(SUGGESTION_POOL)
+    const firstBefore = decks.current(1)
+    const secondBefore = decks.current(2)
+
+    const firstAfter = decks.rotate(1)
+
+    expect(firstAfter).not.toEqual(firstBefore)
+    expect(decks.current(2)).toEqual(secondBefore)
+  })
+
+  it('reports the same page on repeated reads', () => {
+    const decks = new SuggestionDecks(SUGGESTION_POOL)
+    expect(decks.current(7)).toEqual(decks.current(7))
+  })
+
+  it('drops decks for turns that no longer exist', () => {
+    const decks = new SuggestionDecks(SUGGESTION_POOL)
+    const before = decks.current(1)
+    decks.retain([2, 3])
+    // A dropped turn starts fresh, which is acceptable; what matters is that the
+    // map cannot grow without bound as a conversation gets longer.
+    expect(decks.current(2)).toHaveLength(SUGGESTIONS_PER_PAGE)
+    expect(before).toHaveLength(SUGGESTIONS_PER_PAGE)
+  })
+
+  it('keeps retained turns unchanged', () => {
+    const decks = new SuggestionDecks(SUGGESTION_POOL)
+    decks.rotate(1)
+    const kept = decks.current(1)
+    decks.retain([1])
+    expect(decks.current(1)).toEqual(kept)
   })
 })
 

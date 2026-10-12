@@ -26,6 +26,7 @@ TOOL_DESCRIPTIONS = {
     "get_average_game_duration": "Get the average positive, parseable game duration in seconds.",
     "get_spell_stats": "Get summoner-spell pick rates and win rates by spell ID or exact Chinese name; optionally filter one spell or return a sorted top N.",
     "get_spell_win_split": "Compare team win rates with versus without a specific summoner spell, over the same matches.",
+    "get_team_objective_averages": "Get the mean end-of-match objective counts per team (towers, inhibitors, barons, dragons, rift heralds); optionally restrict to one objective.",
 }
 
 
@@ -352,4 +353,53 @@ def get_spell_win_split(spell: str | int, csv_path: str | Path | None = None) ->
     result["spell_name"] = by_id.get(requested_id)
     result["mapping_source"] = "Riot Data Dragon (zh_CN) summoner spell snapshot"
     result["caveat"] = "观测数据，非受控实验；胜率差异同时受英雄与位置选择影响，不可解读为因果。"
+    return result
+
+
+def get_team_objective_averages(
+    objective: str | None = None,
+    csv_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Return mean end-of-match objective counts per team.
+
+    ``objective`` may be a raw column suffix (``towerKills``) or the Chinese label
+    (``防御塔``); omitted, every objective is returned.
+    """
+    result = metrics.team_objective_averages(_rows(csv_path))
+
+    if objective is None:
+        return result
+
+    token = str(objective).strip()
+    by_label = {label: key for key, label in metrics.OBJECTIVE_LABELS.items()}
+    resolved = token if token in metrics.TEAM_OBJECTIVES else None
+    if resolved is None:
+        resolved = by_label.get(token)
+    if resolved is None:
+        # Match the label loosely so "防御塔" style answers work: labels carry
+        # parenthetical notes such as "男爵（大龙）".
+        for label, key in by_label.items():
+            if token and token in label:
+                resolved = key
+                break
+
+    if resolved is None:
+        return {
+            "metric": "team_objective_averages",
+            "objective_query": token,
+            "objective_filter": None,
+            "unique_match_count": result["unique_match_count"],
+            "objectives": [],
+            "available": [
+                {"objective": key, "objective_label": metrics.OBJECTIVE_LABELS[key]}
+                for key in metrics.TEAM_OBJECTIVES
+            ],
+            "note": "未识别的目标类型；请传入列名（如 towerKills）或中文名（如 防御塔）",
+        }
+
+    result["objective_query"] = token
+    result["objective_filter"] = resolved
+    result["objectives"] = [
+        item for item in result["objectives"] if item["objective"] == resolved
+    ]
     return result

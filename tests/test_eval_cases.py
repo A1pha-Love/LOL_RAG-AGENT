@@ -81,10 +81,14 @@ def _check_expected_block(expected: dict[str, Any], actual: dict[str, Any], case
     are the same numbers under different names, so the mapping is made explicit here
     rather than left to a coincidence.
     """
-    # A single-champion query returns one row: compare the reference against it.
-    rows = actual.get("results")
-    if isinstance(rows, list) and len(rows) == 1 and "results" not in expected:
-        actual = rows[0]
+    # A single-row query returns one row: compare the reference against it. Tools
+    # name their row array differently (`results` for rankings, `objectives` for the
+    # objective breakdown), so both are unwrapped rather than assuming one.
+    for row_key in ("results", "objectives"):
+        rows = actual.get(row_key)
+        if isinstance(rows, list) and len(rows) == 1 and row_key not in expected:
+            actual = rows[0]
+            break
 
     def occurrence_parts(block: dict[str, Any]) -> tuple[Any, Any]:
         """`occurred` / `not_occurred` from a numerator/denominator block."""

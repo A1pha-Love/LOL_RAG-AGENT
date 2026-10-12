@@ -202,3 +202,50 @@ def test_disable_spells_from_the_mapping_are_not_invented() -> None:
     """
     result = tools.get_spell_stats("35")
     assert result["results"] == [], "a disabled spell must not produce a data row"
+
+
+# --------------------------------------------------------------------------
+# team objective averages
+# --------------------------------------------------------------------------
+
+@needs_dataset
+def test_objective_averages_cover_every_objective() -> None:
+    result = tools.get_team_objective_averages()
+    assert result["unique_match_count"] == 51_053
+    assert len(result["objectives"]) == len(tools.metrics.TEAM_OBJECTIVES)
+    # Every objective must carry a human label, or the answer cannot name it.
+    assert all(item["objective_label"] for item in result["objectives"])
+
+
+@needs_dataset
+def test_objective_can_be_addressed_by_column_or_chinese_name() -> None:
+    by_column = tools.get_team_objective_averages("towerKills")
+    assert by_column["objective_filter"] == "towerKills"
+    assert len(by_column["objectives"]) == 1
+    assert by_column["objectives"][0]["objective"] == "towerKills"
+
+    for label, expected in (
+        ("防御塔", "towerKills"),
+        ("水晶", "inhibitorKills"),
+        ("男爵", "baronKills"),
+        ("小龙", "dragonKills"),
+        ("峡谷先锋", "riftHeraldKills"),
+    ):
+        assert tools.get_team_objective_averages(label)["objective_filter"] == expected, label
+
+
+@needs_dataset
+def test_unrecognised_objective_lists_what_is_available() -> None:
+    """An empty list alone is indistinguishable from "no data"; say what is valid."""
+    result = tools.get_team_objective_averages("这不存在")
+    assert result["objectives"] == []
+    assert result["objective_filter"] is None
+    assert "未识别" in result["note"]
+    assert len(result["available"]) == len(tools.metrics.TEAM_OBJECTIVES)
+
+
+@needs_dataset
+def test_objective_averages_carry_the_cumulative_value_caveat() -> None:
+    """These counts are end-of-match totals, not a timeline."""
+    result = tools.get_team_objective_averages()
+    assert "累计值" in result["note"]

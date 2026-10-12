@@ -292,3 +292,96 @@ def average_game_duration(rows: Iterable[Row]) -> dict:
         if duration > 0:
             durations.append(duration)
     return _result("average_game_duration_seconds", sum(durations), len(durations), "seconds")
+
+
+# Team-objective columns, grouped by team. These are end-of-match cumulative counts,
+# so a mean answers "how many did a team take in a typical game" and says nothing
+# about when they were taken or in what order.
+TEAM_OBJECTIVES = (
+    "towerKills",
+    "inhibitorKills",
+    "baronKills",
+    "dragonKills",
+    "riftHeraldKills",
+)
+
+# Human-facing names, since the raw column names are not what a question would say.
+OBJECTIVE_LABELS = {
+    "towerKills": "防御塔",
+    "inhibitorKills": "水晶",
+    "baronKills": "男爵（大龙）",
+    "dragonKills": "小龙",
+    "riftHeraldKills": "峡谷先锋",
+}
+
+
+def team_objective_averages(rows: Iterable[Row]) -> dict:
+    """Mean end-of-match objective counts, per objective and per side.
+
+    The denominator is the number of matches that recorded a parseable value for
+    that column, so a column with missing entries cannot silently shrink the mean by
+    treating blanks as zero. Every team-objective column in this dataset is fully
+    populated, and the reported per-side denominator makes that verifiable rather
+    than assumed.
+
+    Results are reported per side (``team1`` / ``team2``) and combined, but **no
+    winner/loser split is produced**: ``winner`` identifies the winning side, and
+    ``team1``/``team2`` are not colour sides, so a "winning team" aggregate would be
+    a different metric needing its own name and definition.
+    """
+    matches = _unique_rows(rows)
+    # (total, count) per side and objective, accumulated in a single pass.
+    accumulator: dict[str, list[int]] = {
+        f"team{team}_{objective}": [0, 0]
+        for team in (1, 2)
+        for objective in TEAM_OBJECTIVES
+    }
+
+    for row in matches:
+        for team in (1, 2):
+            for objective in TEAM_OBJECTIVES:
+                value = str(row.get(f"t{team}_{objective}", "")).strip()
+                if not value.lstrip("-").isdigit():
+                    continue
+                cell = accumulator[f"team{team}_{objective}"]
+                cell[0] += int(value)
+                cell[1] += 1
+
+    objectives: list[dict] = []
+    for objective in TEAM_OBJECTIVES:
+        sides = {f"team{team}": accumulator[f"team{team}_{objective}"] for team in (1, 2)}
+        sides["team1"] = {
+            "matches": sides["team1"][1],
+            "total": sides["team1"][0],
+            "average": _result(
+                f"team1_{objective}_average", sides["team1"][0], sides["team1"][1], "matches"
+            ),
+        }
+        sides["team2"] = {
+            "matches": sides["team2"][1],
+            "total": sides["team2"][0],
+            "average": _result(
+                f"team2_{objective}_average", sides["team2"][0], sides["team2"][1], "matches"
+            ),
+        }
+        pooled_total = accumulator[f"team1_{objective}"][0] + accumulator[f"team2_{objective}"][0]
+        pooled_count = accumulator[f"team1_{objective}"][1] + accumulator[f"team2_{objective}"][1]
+        objectives.append(
+            {
+                "objective": objective,
+                "objective_label": OBJECTIVE_LABELS[objective],
+                "column_pattern": f"t{{1,2}}_{objective}",
+                "team1": sides["team1"],
+                "team2": sides["team2"],
+                "combined": _result(
+                    f"{objective}_average_per_team", pooled_total, pooled_count, "matches"
+                ),
+            }
+        )
+
+    return {
+        "metric": "team_objective_averages",
+        "unique_match_count": len(matches),
+        "note": "对局结束时的累计值；不代表取得时间或顺序。不按胜方/败方拆分。",
+        "objectives": objectives,
+    }

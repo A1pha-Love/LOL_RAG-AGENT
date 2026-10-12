@@ -100,6 +100,12 @@ def get_spell_win_split(spell: str) -> dict:
 
 
 @tool
+def get_team_objective_averages(objective: str | None = None) -> dict:
+    """Get mean end-of-match objective counts per team: towers, inhibitors, barons, dragons, rift heralds. Pass a column name like towerKills or a Chinese name like 防御塔 to restrict to one objective."""
+    return data_tools.get_team_objective_averages(objective)
+
+
+@tool
 def search_project_knowledge(query: str, top_k: int = 8) -> dict[str, object]:
     """Retrieve project metric definitions, dataset boundaries, and audit evidence; cite returned source and heading.
 
@@ -148,6 +154,7 @@ AGENT_TOOLS = [
     get_average_game_duration,
     get_spell_stats,
     get_spell_win_split,
+    get_team_objective_averages,
     search_project_knowledge,
 ]
 

@@ -15,6 +15,9 @@ from pathlib import Path
 import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _api_guard import requires_embedding  # noqa: E402
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 from lol_agent import knowledge as kb  # noqa: E402
@@ -228,6 +231,7 @@ def test_distractor_categories_are_named_not_magic_values() -> None:
 
 
 @index_exists
+@requires_embedding
 def test_search_excludes_distractor_documents_by_default() -> None:
     """Regression: distractors used to be ranked alongside real content.
 
@@ -240,6 +244,7 @@ def test_search_excludes_distractor_documents_by_default() -> None:
 
 
 @index_exists
+@requires_embedding
 def test_distractors_can_still_be_requested_for_calibration() -> None:
     """Calibration needs them, so the escape hatch must keep working.
 
@@ -253,6 +258,7 @@ def test_distractors_can_still_be_requested_for_calibration() -> None:
 
 
 @index_exists
+@requires_embedding
 def test_excluding_distractors_does_not_shorten_the_result_list() -> None:
     """A distractor must not occupy a top_k slot.
 
@@ -266,6 +272,7 @@ def test_excluding_distractors_does_not_shorten_the_result_list() -> None:
 
 
 @index_exists
+@requires_embedding
 def test_excluding_distractors_does_not_harm_a_real_question() -> None:
     """The change must not cost recall on an ordinary in-scope question."""
     hits = kb.search_knowledge("Ban 率以什么为分母？", top_k=8)
@@ -282,6 +289,7 @@ def test_category_filter_and_include_noise_are_mutually_exclusive() -> None:
 
 
 @index_exists
+@requires_embedding
 def test_an_explicit_distractor_category_is_still_honoured() -> None:
     """Naming a distractor category is an explicit request, so it must be allowed."""
     hits = kb.search_knowledge("咖啡机除垢", category="offtopic")

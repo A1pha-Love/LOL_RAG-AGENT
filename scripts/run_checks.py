@@ -143,12 +143,32 @@ def _server_reachable(host: str = "127.0.0.1", port: int = 8000) -> bool:
 # as SKIP — never as PASS, which would fake coverage.
 SERVER_STEPS = {"sse", "concurrent", "endpoints"}
 
+# Steps that call the model API. Reported as SKIP when the account cannot call it,
+# for the same reason: a quota problem is not a defect, and must not be presented as
+# one, nor hide a real regression behind noise.
+API_STEPS = {"kbase", "recall", "sse", "concurrent"}
 
-def run(step: Step, *, index_present: bool) -> tuple[bool, str, float]:
+
+def _model_unavailable() -> str | None:
+    """Reason the model API cannot be used, or None when it works."""
+    import importlib.util
+
+    scripts_dir = PROJECT_ROOT / "scripts"
+    spec = importlib.util.spec_from_file_location("_checks_http", scripts_dir / "_http.py")
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.model_quota_exhausted()
+
+
+def run(step: Step, *, index_present: bool, model_reason: str | None = None) -> tuple[bool, str, float]:
     if step.needs_index and not index_present:
         return True, "skipped (index not built)", 0.0
     if step.key in SERVER_STEPS and not _server_reachable():
         return True, "skipped 服务器未运行（127.0.0.1:8000）", 0.0
+    if step.key in API_STEPS and model_reason:
+        return True, f"skipped {model_reason}", 0.0
 
     environment = dict(os.environ)
     environment["PYTHONIOENCODING"] = "utf-8"
@@ -190,13 +210,18 @@ def main() -> int:
         return 0
 
     index_present = (PROJECT_ROOT / "reports" / "knowledge.db").is_file()
+    # Probed once: several steps would otherwise each spend a request discovering the
+    # same thing, and the reason is the same for all of them.
+    model_reason = _model_unavailable()
     print("=" * 88)
     print(f"离线检查（{len(steps)} 步）{'— 快速模式' if args.fast else ''}")
+    if model_reason:
+        print(f"注意：{model_reason} — 依赖模型 API 的步骤将标记为 SKIP")
     print("=" * 88)
 
     failures: list[tuple[Step, str]] = []
     for step in steps:
-        ok, output, elapsed = run(step, index_present=index_present)
+        ok, output, elapsed = run(step, index_present=index_present, model_reason=model_reason)
         marker = "PASS" if ok else "FAIL"
         note = ""
         if output.strip().startswith("skipped"):

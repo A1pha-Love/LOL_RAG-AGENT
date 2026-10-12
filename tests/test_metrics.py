@@ -509,3 +509,114 @@ def test_spell_counts_reconcile_with_a_slot_level_tally(rows: list[dict[str, str
     direct = sum(len(metrics._spells_for_team(row, team)) for row in rows for team in (1, 2))
     reported = sum(item["picked_teams"] for item in metrics.spell_stats(rows).values())
     assert direct == reported
+
+
+# --------------------------------------------------------------------------
+# team objective averages
+# --------------------------------------------------------------------------
+
+def _objective_row(game_id: str, **counts: str) -> dict[str, str]:
+    return {"gameId": game_id, "winner": "1", **counts}
+
+
+def test_team_objective_averages_reports_every_objective() -> None:
+    rows = [_objective_row("g1", t1_towerKills="5", t2_towerKills="3")]
+    result = metrics.team_objective_averages(rows)
+    assert {item["objective"] for item in result["objectives"]} == set(metrics.TEAM_OBJECTIVES)
+    assert result["unique_match_count"] == 1
+
+
+def test_objective_average_uses_the_total_over_matches() -> None:
+    """The mean must be total / matches, and both parts must be reported."""
+    rows = [
+        _objective_row("g1", t1_towerKills="5", t1_dragonKills="2"),
+        _objective_row("g2", t1_towerKills="7", t1_dragonKills="0"),
+    ]
+    towers = next(
+        item
+        for item in metrics.team_objective_averages(rows)["objectives"]
+        if item["objective"] == "towerKills"
+    )
+    assert towers["team1"]["total"] == 12
+    assert towers["team1"]["matches"] == 2
+    assert towers["team1"]["average"]["numerator"] == 12
+    assert towers["team1"]["average"]["denominator"] == 2
+
+
+def test_objective_average_sides_are_counted_separately() -> None:
+    rows = [_objective_row("g1", t1_baronKills="1", t2_baronKills="3")]
+    barons = next(
+        item
+        for item in metrics.team_objective_averages(rows)["objectives"]
+        if item["objective"] == "baronKills"
+    )
+    assert barons["team1"]["total"] == 1
+    assert barons["team2"]["total"] == 3
+    # Pooled over both sides: 4 counts across 2 team-games.
+    assert barons["combined"]["numerator"] == 4
+    assert barons["combined"]["denominator"] == 2
+
+
+def test_objective_average_ignores_unparseable_values_without_treating_them_as_zero() -> None:
+    """A blank must not enter the denominator, or the mean is silently depressed."""
+    rows = [
+        _objective_row("g1", t1_towerKills="6"),
+        _objective_row("g2", t1_towerKills=""),
+        _objective_row("g3", t1_towerKills="not-a-number"),
+    ]
+    towers = next(
+        item
+        for item in metrics.team_objective_averages(rows)["objectives"]
+        if item["objective"] == "towerKills"
+    )
+    assert towers["team1"]["matches"] == 1, "only the parseable row counts"
+    assert towers["team1"]["total"] == 6
+
+
+def test_objective_average_deduplicates_matches() -> None:
+    row = _objective_row("g1", t1_towerKills="4")
+    towers = next(
+        item
+        for item in metrics.team_objective_averages([row, row])["objectives"]
+        if item["objective"] == "towerKills"
+    )
+    assert towers["team1"]["matches"] == 1
+
+
+def test_objective_average_does_not_split_by_winner() -> None:
+    """team1/team2 are not colour sides, so a winner split would be a different metric.
+
+    Guards against one being added later without renaming the metric: the payload
+    must keep saying it is not a winner/loser breakdown.
+    """
+    result = metrics.team_objective_averages([_objective_row("g1", t1_towerKills="1")])
+    assert "不按胜方" in result["note"]
+
+
+@needs_dataset
+def test_objective_columns_are_fully_populated(rows: list[dict[str, str]]) -> None:
+    """Ground truth: every team-objective column is parseable in every match.
+
+    If this ever fails, the per-side `matches` counts are where to look — the mean
+    would still be computed, but over a smaller denominator.
+    """
+    for item in metrics.team_objective_averages(rows)["objectives"]:
+        assert item["team1"]["matches"] == len(rows), item["objective"]
+        assert item["team2"]["matches"] == len(rows), item["objective"]
+
+
+@needs_dataset
+def test_objective_averages_match_a_direct_recomputation(rows: list[dict[str, str]]) -> None:
+    """Independent recomputation straight from the CSV rows."""
+    totals: dict[str, int] = {}
+    for row in rows:
+        for team in (1, 2):
+            for objective in metrics.TEAM_OBJECTIVES:
+                key = f"team{team}_{objective}"
+                totals[key] = totals.get(key, 0) + int(row[f"t{team}_{objective}"])
+
+    result = metrics.team_objective_averages(rows)
+    for item in result["objectives"]:
+        for team in (1, 2):
+            key = f"team{team}_{item['objective']}"
+            assert item[f"team{team}"]["total"] == totals[key], key

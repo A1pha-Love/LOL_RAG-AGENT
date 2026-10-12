@@ -49,6 +49,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 # key depend on import order, which is exactly the kind of thing that fails silently.
 from lol_agent import config as _config  # noqa: E402,F401
 
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+import _eval_retrieval as _retrieval_helpers  # noqa: E402
+
 CASES_PATH = PROJECT_ROOT / "evals" / "rag_cases.jsonl"
 CACHE_PATH = PROJECT_ROOT / ".cache" / "eval_agent_cache.json"
 BASELINE_PATH = PROJECT_ROOT / "evals" / "agent_baseline.json"
@@ -218,6 +221,20 @@ def explain_retrieval(case: dict[str, Any], helpers) -> None:
             print(f"          → 排名第 {rank}，rerank={score:.4f} {marker}")
 
 
+def _retrieval_targets(item: Any) -> list[dict[str, str]]:
+    """Kept as a thin alias: the rules live in scripts/_eval_retrieval.py so the offline
+    verifier and this gate cannot disagree about what satisfies an assertion."""
+    return _retrieval_helpers.retrieval_targets(item)
+
+
+def _describe_expectation(item: Any) -> str:
+    return _retrieval_helpers.describe_expectation(item)
+
+
+def _retrieval_satisfied(item: Any, retrieved: list[dict[str, Any]]) -> bool:
+    return _retrieval_helpers.is_satisfied(item, retrieved)
+
+
 def score_case(case: dict[str, Any], payload: dict[str, Any], helpers) -> CaseOutcome:
     outcome = CaseOutcome(case_id=case["id"])
     called = set(payload["called_tools"])
@@ -228,18 +245,41 @@ def score_case(case: dict[str, Any], payload: dict[str, Any], helpers) -> CaseOu
     outcome.gates["tools"] = expected.issubset(called)
     outcome.gates["no_forbidden_tools"] = not (forbidden & called)
 
+    # Some cases name a tool that is genuinely helpful but not required, because the
+    # remaining tools already answer the question. Demanding it records a failure for a
+    # correct turn — observed when a case listed search_project_knowledge alongside two
+    # statistics tools, and the statistics alone produced the requested figures.
+    # `optional_tools` keeps the helpful tool off the critical path while still failing
+    # the case if *none* of the listed tools was used, so it cannot pass by accident.
+    optional = set(case.get("optional_tools", []))
+    if optional:
+        outcome.gates["tools"] = outcome.gates["tools"] and bool(called & (expected | optional))
+
     # Retrieval assertions match the heading PATH: the knowledge base re-chunks by
     # heading, so an expected heading is a substring of "文档 > 节 > 小节".
-    outcome.missing_retrieval = [
-        f"{item['source']} :: {item['heading']}"
-        for item in case.get("expected_retrieval", [])
-        if not any(
-            chunk.get("source") == item["source"]
-            and item["heading"] in (chunk.get("heading_path") or "")
-            for chunk in payload["retrieved"]
-        )
-    ]
-    outcome.gates["retrieval"] = not outcome.missing_retrieval
+    #
+    # An expectation may list several acceptable targets ("source" + "heading" pairs as
+    # a list, or `alternatives`). That is deliberate: a question about a fact is often
+    # answered equally well by more than one section, and requiring one specific
+    # section grades the retriever on an arbitrary choice rather than on whether the
+    # answer was available. Demanding a single section previously recorded failures for
+    # cases whose content had in fact been retrieved.
+    #
+    # When the retrieval tool was not called and is optional, there is nothing to
+    # assert: grading retrieval that did not happen would fail a turn for correctly
+    # using the tools that did answer the question.
+    retrieval_skipped = (
+        "search_project_knowledge" not in called and "search_project_knowledge" in optional
+    )
+    if retrieval_skipped:
+        outcome.gates["retrieval"] = True
+    else:
+        outcome.missing_retrieval = [
+            _describe_expectation(item)
+            for item in case.get("expected_retrieval", [])
+            if not _retrieval_satisfied(item, payload["retrieved"])
+        ]
+        outcome.gates["retrieval"] = not outcome.missing_retrieval
 
     numeric = helpers._numeric_checks(case, payload["tool_results"])
     outcome.gates["numeric"] = all(numeric)  # vacuously true when there are none
@@ -362,6 +402,24 @@ def main() -> int:
     for name in GATES:
         print(f"  {name:<22} {gate_totals[name]}/{total}")
     print(f"  {'answer_must_include':<22} {inclusion_passed}/{inclusion_total}（措辞启发式，仅在 --strict 时门禁）")
+
+    # Cases matching none of their required content deserve to be called out, because
+    # that is the signature of an answer which missed the point — observed when the
+    # model claimed it "cannot report" a list that had in fact been retrieved for it
+    # and was being cited in the same paragraph. It is reported rather than gated
+    # because a correct refusal also matches none of the required content
+    # (color_side_guardrail is exactly that), so gating here would fail correct turns.
+    zero_inclusion = [
+        result.outcome.case_id
+        for result in results
+        if result.outcome.inclusion_total and result.outcome.inclusion_passed == 0
+    ]
+    if zero_inclusion:
+        print()
+        print(f"未命中任何必需内容（需人工确认是否漏答）: {', '.join(zero_inclusion)}")
+        for result in results:
+            if result.outcome.case_id in zero_inclusion:
+                print(f"  ? {result.outcome.case_id}: 缺少 {result.outcome.missing_inclusions}")
 
     # ----------------------------------------------------------------- baseline
     regressions: list[str] = []

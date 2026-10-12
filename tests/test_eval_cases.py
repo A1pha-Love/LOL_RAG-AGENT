@@ -281,8 +281,34 @@ def test_agent_eval_cases_are_well_formed() -> None:
         assert case.get("expected_tools") or case.get("forbidden_tools"), (
             f"{case['id']} expects no tool and forbids none, so it asserts nothing"
         )
+        # A tool must not be both required and optional: the gate could not satisfy both.
+        overlap = set(case.get("expected_tools", [])) & set(case.get("optional_tools", []))
+        assert not overlap, f"{case['id']}: tools both required and optional: {sorted(overlap)}"
+        # optional_tools without expected_tools would make tool selection unasserted.
+        if case.get("optional_tools"):
+            assert case.get("expected_tools"), (
+                f"{case['id']} declares only optional tools, so any tool choice passes"
+            )
         for item in case.get("expected_retrieval", []):
-            assert "source" in item and "heading" in item, f"{case['id']}: bad retrieval item"
+            # One entry may name several acceptable sections, since a question about a
+            # fact is often answered equally well by more than one. Both forms are
+            # validated so a malformed alternative cannot silently make the assertion
+            # trivially satisfiable.
+            if isinstance(item, dict) and item.get("alternatives"):
+                targets = item["alternatives"]
+                assert targets, f"{case['id']}: empty alternatives list"
+            elif isinstance(item, list):
+                targets = item
+                assert targets, f"{case['id']}: empty alternatives list"
+            else:
+                targets = [item]
+            for target in targets:
+                assert isinstance(target, dict), f"{case['id']}: retrieval target is not an object"
+                assert target.get("source"), f"{case['id']}: retrieval target without source"
+                assert target.get("heading"), (
+                    f"{case['id']}: retrieval target without heading — a missing heading "
+                    "would match any section in the source"
+                )
         for assertion in case.get("numeric_assertions", []):
             assert "tool" in assertion, f"{case['id']}: numeric assertion without a tool"
             assert "numerator" in assertion and "denominator" in assertion, (

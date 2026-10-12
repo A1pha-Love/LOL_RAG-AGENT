@@ -16,9 +16,11 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from lol_agent.knowledge import INDEX_PATH, MIN_RERANK_SCORE  # noqa: E402
 from lol_agent.reranker import RerankUnavailable, rerank  # noqa: E402
+import _eval_retrieval as _retrieval  # noqa: E402
 
 # Question vectors are cached from previous runs so this check stays offline.
 # Question vectors are cached so this check can be re-run without paying for
@@ -105,24 +107,15 @@ def main() -> int:
         misses = [
             entry
             for entry in case["expected_retrieval"]
-            if not any(
-                item["source"] == entry["source"] and entry["heading"] in item["heading_path"]
-                for item in top
-            )
+            if not _retrieval.is_satisfied(entry, top)
         ]
         passed += int(not misses)
         print(f"[{'PASS' if not misses else 'FAIL'}] {case['id']}  ({note})")
         for entry in case["expected_retrieval"]:
-            position = next(
-                (
-                    rank + 1
-                    for rank, item in enumerate(pool)
-                    if item["source"] == entry["source"] and entry["heading"] in item["heading_path"]
-                ),
-                None,
-            )
+            label = _retrieval.describe_expectation(entry)
+            position = _retrieval.best_rank(entry, pool)
             mark = "ok" if not any(entry == miss for miss in misses) else "MISS"
-            print(f"    {mark:4} rank={position}  {entry['source']} :: {entry['heading']}")
+            print(f"    {mark:4} rank={position}  {label}")
 
     print()
     print(f"RETRIEVAL ASSERTIONS: {passed}/{len(cases)}")

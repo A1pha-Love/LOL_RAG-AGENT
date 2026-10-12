@@ -52,10 +52,6 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ pinned }),
     }),
-
-  /** Record that a conversation was opened, so it rises within its group. */
-  touchSession: (id: string) =>
-    request<{ session_id: string }>(`/api/sessions/${id}/touch`, { method: 'POST' }),
 }
 
 /**

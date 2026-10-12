@@ -97,7 +97,6 @@ describe('store turn identity', () => {
       getSession: vi.fn(),
       deleteSession: vi.fn(),
       pinSession: vi.fn(),
-      touchSession: vi.fn(async (id: string) => ({ session_id: id })),
     }
     vi.doMock('@/lib/api', () => ({
       api: apiStub,

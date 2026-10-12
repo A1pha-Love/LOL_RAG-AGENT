@@ -32,7 +32,6 @@ const apiStub = {
   })),
   deleteSession: vi.fn(async () => undefined),
   pinSession: vi.fn(async (id: string, pinned: boolean) => ({ session_id: id, pinned })),
-  touchSession: vi.fn(async (id: string) => ({ session_id: id })),
 }
 
 let streamStub: (...args: unknown[]) => AsyncGenerator<unknown>

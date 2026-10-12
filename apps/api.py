@@ -164,20 +164,6 @@ def pin_session(session_id: str, body: PinSessionRequest) -> dict[str, Any]:
     return {"session_id": session_id, "pinned": body.pinned}
 
 
-@app.post("/api/sessions/{session_id}/touch")
-def touch_session(session_id: str) -> dict[str, Any]:
-    """Record that a conversation was opened.
-
-    The UI calls this so the opened conversation rises to the top of the non-pinned
-    group while pinned conversations stay above it.
-    """
-    try:
-        get_store().touch(session_id)
-    except SessionNotFound as exc:
-        raise HTTPException(status_code=404, detail=f"找不到会话：{session_id}") from exc
-    return {"session_id": session_id}
-
-
 # --------------------------------------------------------------------------
 # streaming answer route
 # --------------------------------------------------------------------------
@@ -222,7 +208,14 @@ if _DIST.is_dir():
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa_fallback(path: str) -> FileResponse:
-        """Serve built files, falling back to index.html for client-side routes."""
+        """Serve built files, falling back to index.html for client-side routes.
+
+        An unmatched `/api/...` path is answered with JSON 404 instead of index.html:
+        returning HTML for an API URL hides typos and stale clients behind a 200, and
+        makes a missing endpoint look like it succeeded.
+        """
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404, detail=f"未知接口：/{path}")
         candidate = (_DIST / path).resolve()
         if _DIST in candidate.parents and candidate.is_file():
             return FileResponse(candidate)

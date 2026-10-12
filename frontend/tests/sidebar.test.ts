@@ -33,14 +33,31 @@ const apiStub = {
   })),
   deleteSession: vi.fn(async () => undefined),
   pinSession: vi.fn(async (id: string, pinned: boolean) => ({ session_id: id, pinned })),
-  touchSession: vi.fn(async (id: string) => ({ session_id: id })),
 }
+
+/**
+ * Guard: any API method not listed above throws instead of being a silent no-op.
+ *
+ * Without this, a reintroduced call (for example recording activity when a
+ * conversation is opened, which was a reported bug) would resolve to `undefined` and
+ * the test would still pass. With it, the unexpected method is reached and fails.
+ */
+const guardedApi = new Proxy(apiStub, {
+  get(target, property, receiver) {
+    if (typeof property === 'string' && !(property in target)) {
+      return () => {
+        throw new Error(`unexpected API call in this test: ${property}`)
+      }
+    }
+    return Reflect.get(target, property, receiver)
+  },
+})
 
 let streamStub: (...args: unknown[]) => AsyncGenerator<unknown>
 
 vi.mock('@/lib/api', () => ({
   get api() {
-    return apiStub
+    return guardedApi
   },
   get streamTurn() {
     return streamStub
@@ -124,17 +141,50 @@ describe('a new conversation appears immediately', () => {
 })
 
 describe('opening a conversation', () => {
-  it('records the activity so the order survives a reload', async () => {
+  it('does NOT reorder the list just because it was opened', async () => {
+    // Reported as a bug: clicking a conversation to read it made the sidebar jump
+    // under the cursor, which looked like the wrong item had been selected. Opening
+    // is not participation, so it must not count as activity.
+    //
+    // The apiStub proxy makes this a hard assertion: any call outside the stubbed set
+    // (a touch/ordering endpoint under any name) throws rather than being ignored.
     const store = await loadStore()
 
     await store.selectSession('a')
 
-    expect(apiStub.touchSession).toHaveBeenCalledWith('a')
-    // Re-read rather than reordering locally: one source of truth for the order.
-    expect(apiStub.listSessions).toHaveBeenCalled()
+    expect(store.state.activeSessionId).toBe('a')
   })
 
-  it('reflects the server order after opening', async () => {
+  it('does not re-read the list when nothing changed', async () => {
+    const store = await loadStore()
+    apiStub.listSessions.mockClear()
+
+    await store.selectSession('a')
+
+    expect(apiStub.listSessions).not.toHaveBeenCalled()
+  })
+
+  it('shows the stored transcript', async () => {
+    apiStub.getSession.mockResolvedValue({
+      session_id: 'a',
+      title: 'a',
+      created_at: '',
+      updated_at: '',
+      turns: [
+        { role: 'user', content: '旧问题', retrieval_query: null, tool_calls: [], created_at: '' },
+        { role: 'assistant', content: '旧答案', retrieval_query: null, tool_calls: [], created_at: '' },
+      ],
+    })
+    const store = await loadStore()
+
+    await store.selectSession('a')
+
+    expect(store.state.activeSessionId).toBe('a')
+    expect(store.state.turns.map((turn) => turn.question)).toEqual(['旧问题'])
+    expect(store.state.turns[0].answer).toBe('旧答案')
+  })
+
+  it('reflects the server order when the list is re-read', async () => {
     const store = await loadStore()
     await store.selectSession('a')
     // The order comes from the server, so the test supplies it and checks it lands.
@@ -146,15 +196,19 @@ describe('opening a conversation', () => {
 
     expect(store.state.sessions.map((item) => item.session_id)).toEqual(['a', 'b'])
   })
+})
 
-  it('still opens the conversation when the touch call fails', async () => {
-    // Ordering is cosmetic; it must not be able to break navigation.
-    apiStub.touchSession.mockRejectedValue(new Error('offline'))
+describe('a completed turn moves the conversation up', () => {
+  it('re-reads the list after asking, so the order follows real activity', async () => {
+    // This is where the reordering is now expected to happen: the server bumps
+    // last_active_at when a turn is appended, and ask() re-reads the order.
     const store = await loadStore()
-
     await store.selectSession('a')
+    apiStub.listSessions.mockClear()
 
-    expect(store.state.activeSessionId).toBe('a')
+    await store.ask('新问题')
+
+    expect(apiStub.listSessions).toHaveBeenCalled()
   })
 })
 

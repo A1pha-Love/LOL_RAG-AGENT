@@ -143,15 +143,11 @@ async function selectSession(id: string): Promise<void> {
   state.streaming = liveTurn !== null && liveTurn.sessionId === id
   state.selectedTurnId = state.turns.at(-1)?.id ?? null
 
-  // Opening a conversation counts as activity, so it rises to the head of the
-  // non-pinned group. Recorded on the server so the order survives a reload, then
-  // re-read rather than reordering locally — one source of truth for the order.
-  try {
-    await api.touchSession(id)
-    await refreshSessions()
-  } catch {
-    // Ordering is cosmetic; a failure here must not break opening a conversation.
-  }
+  // Deliberately NOT recorded as activity. Opening a conversation to read it is not
+  // participation, and reordering the sidebar on click made the list jump under the
+  // cursor — it looked like the wrong conversation had been selected. The order now
+  // changes when the conversation actually gains a turn: the server updates
+  // `last_active_at` when a turn is appended, and ask() re-reads the list afterwards.
 }
 
 /** Pin or unpin a conversation. */

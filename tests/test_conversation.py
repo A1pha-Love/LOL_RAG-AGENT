@@ -170,8 +170,13 @@ def test_sessions_default_to_unpinned(temp_db) -> None:
         assert store.list_sessions()[0]["pinned"] == 0
 
 
-def test_opening_a_session_raises_it_within_the_unpinned_group(temp_db) -> None:
-    """The UI calls touch() when a conversation is opened."""
+def test_a_new_turn_raises_a_session_within_the_unpinned_group(temp_db) -> None:
+    """Activity is what reorders the list, and a turn is what counts as activity.
+
+    Deliberately driven through `append_turn`: that is the only thing production does
+    to mark a conversation active, so exercising it directly keeps the test honest
+    about how the order actually changes.
+    """
     with _temp_store(temp_db) as store:
         oldest = store.create_session()
         middle = store.create_session()
@@ -179,19 +184,40 @@ def test_opening_a_session_raises_it_within_the_unpinned_group(temp_db) -> None:
 
         assert [item["session_id"] for item in store.list_sessions()] == [newest, middle, oldest]
 
-        store.touch(oldest)
+        store.append_turn(oldest, "user", "新问题")
 
         assert [item["session_id"] for item in store.list_sessions()] == [oldest, newest, middle]
 
 
-def test_opening_a_session_never_lifts_it_above_a_pinned_one(temp_db) -> None:
-    """Requirement: an opened conversation sits *below* the pinned ones."""
+def test_opening_a_session_alone_does_not_reorder(temp_db) -> None:
+    """Reading a conversation is not activity.
+
+    Reported as a bug: clicking a conversation made the sidebar jump under the cursor,
+    which looked like the wrong item had been selected. `list_sessions` must therefore
+    be a pure read with no side effect on the order.
+    """
+    with _temp_store(temp_db) as store:
+        oldest = store.create_session()
+        newest = store.create_session()
+        before = [item["session_id"] for item in store.list_sessions()]
+        assert before == [newest, oldest]
+
+        # Reading the conversation and listing it repeatedly must change nothing.
+        store.get_session(oldest)
+        for _ in range(3):
+            store.list_sessions()
+
+        assert [item["session_id"] for item in store.list_sessions()] == before
+
+
+def test_a_new_turn_never_lifts_a_session_above_a_pinned_one(temp_db) -> None:
+    """Requirement: an active conversation sits *below* the pinned ones."""
     with _temp_store(temp_db) as store:
         pinned = store.create_session()
         other = store.create_session()
         store.set_pinned(pinned, True)
 
-        store.touch(other)
+        store.append_turn(other, "user", "新问题")
 
         listed = [item["session_id"] for item in store.list_sessions()]
         assert listed[0] == pinned
@@ -227,11 +253,11 @@ def test_pinning_an_unknown_session_raises(temp_db) -> None:
             store.set_pinned("does-not-exist", True)
 
 
-def test_touching_an_unknown_session_raises(temp_db) -> None:
+def test_appending_a_turn_to_an_unknown_session_raises(temp_db) -> None:
     with _temp_store(temp_db) as store:
         store.create_session()
         with pytest.raises(conv.SessionNotFound):
-            store.touch("does-not-exist")
+            store.append_turn("does-not-exist", "user", "问题")
 
 
 def test_new_sessions_record_last_active_at(temp_db) -> None:
@@ -245,14 +271,14 @@ def test_new_sessions_record_last_active_at(temp_db) -> None:
 def test_ordering_stays_stable_within_the_same_second(temp_db) -> None:
     """Timestamps carry microseconds, so rapid activity still orders.
 
-    With second precision, opening several conversations quickly would tie and the
-    order would fall back to insertion — the list would look like it ignored the
-    most recent click.
+    With second precision, several turns in quick succession would tie and the order
+    would fall back to insertion — the list would look like it ignored the most recent
+    activity.
     """
     with _temp_store(temp_db) as store:
         ids = [store.create_session() for _ in range(5)]
         for session_id in ids:
-            store.touch(session_id)
+            store.append_turn(session_id, "user", "问题")
         assert store.list_sessions()[0]["session_id"] == ids[-1]
 
 

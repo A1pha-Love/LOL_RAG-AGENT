@@ -1,8 +1,12 @@
 """Smoke-test every HTTP endpoint, fast and without any model call.
 
 Why this exists: SSE framing and concurrent turns were covered by checks, but the
-session endpoints — including the pin and touch routes that ordering depends on — were
+session endpoints — including the pin route that the sidebar ordering depends on — were
 only ever verified by hand. A regression there would break the sidebar silently.
+
+Also asserts that opening a conversation does NOT reorder the list: an "opened" endpoint
+existed once and was removed because clicking a conversation made the sidebar jump. The
+check fails if such a route reappears, so the behaviour cannot regress unnoticed.
 
 Deliberately does not call /api/sessions/ask: that spends model quota. The turn path
 is covered by verify_sse_contract.py and check_concurrent_turns.py.
@@ -127,30 +131,48 @@ def main() -> int:
         status, _, _ = put(f"{base}/api/sessions/{first or 'x'}/pin", {})
         report.check(status == 422, "缺少 pinned 字段返回 422", f"HTTP {status}")
 
-        # ---------------------------------------------------------------- touch
-        report.section("打开会话（touch）")
+        # -------------------------------------------------- ordering after a turn
+        # There is deliberately no "touch/opened" endpoint: opening a conversation to
+        # read it must not reorder the list, so the order changes only when a turn is
+        # appended. Verified through the ask route below rather than by calling a
+        # dedicated endpoint.
+        report.section("置顶与排序不受「打开会话」影响")
         second = new_session()
         if first and second:
-            # Pin `first` so the check can prove touch never overtakes a pinned row.
+            # Pin `first` so the check can prove the pinned group stays on top.
             put(f"{base}/api/sessions/{first}/pin", {"pinned": True})
-            status, _, _ = post(f"{base}/api/sessions/{second}/touch", None)
-            report.check(status == 200, "POST /api/sessions/{id}/touch 返回 200", f"HTTP {status}")
             status, _, body = get(f"{base}/api/sessions")
             rows = (json_body(body) or {}).get("sessions") or []
             order = [row["session_id"] for row in rows]
-            report.check(order and order[0] == first, "打开会话不会越过置顶会话")
+            report.check(order and order[0] == first, "置顶会话仍在首位")
             report.check(
-                order.index(second) < len(order) and (second in order),
-                "被打开的会话在列表中可见",
+                second in order,
+                "新建的会话在列表中可见",
             )
-            # And among the unpinned it should be ahead of the older ones.
-            unpinned = [row["session_id"] for row in rows if row["pinned"] == 0]
-            report.check(unpinned and unpinned[0] == second, "被打开的会话排在非置顶组首位")
+            report.check(
+                all(row["session_id"] != second for row in rows[:1]),
+                "仅创建会话不会把它排到置顶会话之前",
+            )
             put(f"{base}/api/sessions/{first}/pin", {"pinned": False})
 
-        status, _, _ = post(f"{base}/api/sessions/definitely-not-a-session/touch", None)
-        report.check(status == 404, "未知会话 touch 返回 404", f"HTTP {status}")
+        # The removed endpoint must not silently come back. With the route gone, POST
+        # to this path matches GET /api/sessions/{session_id} and is rejected as a
+        # method mismatch — 405, not 404. Asserting 405 is the stronger check: a
+        # reintroduced route would answer 200 and fail here.
+        status, _, _ = post(f"{base}/api/sessions/{first or 'x'}/touch", None)
+        report.check(
+            status == 405,
+            "已移除的 /touch 不再接受 POST（预期 405）",
+            f"HTTP {status}",
+        )
 
+        # And an unknown API path must not fall through to the SPA fallback.
+        status, ctype, _ = get(f"{base}/api/definitely-not-a-route")
+        report.check(
+            "text/html" not in ctype,
+            "未知 /api 路径不回退到 index.html",
+            f"HTTP {status} {ctype}",
+        )
         # ---------------------------------------------------------------- delete
         report.section("删除")
         if second:

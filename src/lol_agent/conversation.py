@@ -257,20 +257,6 @@ class SessionStore:
             if cursor.rowcount == 0:
                 raise SessionNotFound(session_id)
 
-    def touch(self, session_id: str) -> None:
-        """Record that a conversation was just opened.
-
-        Called by the UI so opening a conversation moves it up within the
-        non-pinned group. Raises if the session does not exist.
-        """
-        with self._connect() as connection:
-            cursor = connection.execute(
-                "UPDATE sessions SET last_active_at = ? WHERE session_id = ?",
-                (_now(), session_id),
-            )
-            if cursor.rowcount == 0:
-                raise SessionNotFound(session_id)
-
     def append_turn(
         self,
         session_id: str,
@@ -301,10 +287,16 @@ class SessionStore:
                         "UPDATE sessions SET title = ? WHERE session_id = ?",
                         (content.strip()[:60], session_id),
                     )
-            connection.execute(
+            # Bumping last_active_at here is what makes a conversation rise in the
+            # list: this is the only place production records activity, so the order
+            # follows real participation rather than page views. Raises for an unknown
+            # session instead of silently updating nothing.
+            cursor = connection.execute(
                 "UPDATE sessions SET updated_at = ?, last_active_at = ? WHERE session_id = ?",
                 (stamp, stamp, session_id),
             )
+            if cursor.rowcount == 0:
+                raise SessionNotFound(session_id)
 
     def set_title(self, session_id: str, title: str) -> None:
         with self._connect() as connection:
@@ -324,12 +316,12 @@ class SessionStore:
         if not self.path.is_file():
             return []
         # Order: pinned conversations first (most recently pinned at the top), then
-        # the rest by most recent activity. `touch()` bumps last_active_at when a
-        # conversation is opened, so opening one moves it to the head of the
-        # non-pinned group while the pinned group stays above it.
+        # the rest by most recent activity. `last_active_at` is bumped by
+        # `append_turn`, so a conversation rises only once it actually gains a turn —
+        # merely opening one to read it does not reorder the list.
         #
-        # Timestamps are secondary to `id`: _now() has second precision, so two
-        # sessions touched in the same second must still have a stable order.
+        # Timestamps are secondary to `id`: microsecond precision still permits ties in
+        # principle, so the id keeps the order stable when it happens.
         with self._connect() as connection:
             rows = connection.execute(
                 """SELECT s.session_id, s.title, s.created_at, s.updated_at,

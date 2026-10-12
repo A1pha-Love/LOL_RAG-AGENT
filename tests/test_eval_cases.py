@@ -176,13 +176,39 @@ def test_every_tool_that_matters_has_at_least_one_case() -> None:
     covered = {case["tool"] for case in CASES}
     expected_cover = {
         "get_match_count",
+        "get_dataset_overview",
         "get_champion_stats",
         "get_ban_stats",
         "get_first_event_win_rate",
         "get_first_event_occurrence_rate",
         "get_average_game_duration",
+        "get_spell_stats",
+        "get_spell_win_split",
     }
     assert expected_cover <= covered, f"uncovered tools: {sorted(expected_cover - covered)}"
+
+
+def test_every_deterministic_tool_has_a_case() -> None:
+    """Compare against the real tool registry instead of a hand-kept list.
+
+    A hand-kept list silently rots when a tool is added; reading the registry means a
+    new tool fails this test until it gets a reference case. Tools that cannot be
+    pinned down offline (search_project_knowledge needs the embedding API) are
+    excluded explicitly, so the exclusion is visible rather than accidental.
+    """
+    import inspect
+
+    needs_api = {"search_project_knowledge"}
+    registered = {
+        name
+        for name, value in vars(tools).items()
+        if inspect.isfunction(value) and name.startswith("get_")
+    }
+    uncovered = registered - {case["tool"] for case in CASES} - needs_api
+    assert not uncovered, (
+        f"these tools have no reference case in evals/cases.jsonl: {sorted(uncovered)}. "
+        "Add one, or list it in needs_api with a reason."
+    )
 
 
 @needs_dataset

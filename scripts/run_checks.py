@@ -103,6 +103,12 @@ def build_steps() -> list[Step]:
             argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "check_concurrent_turns.py")],
             fast=False,
         ),
+        Step(
+            key="endpoints",
+            title="接口冒烟（需服务器，不调模型）",
+            argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "verify_api_endpoints.py")],
+            fast=False,
+        ),
     ]
 
     # The frontend tests are offline and fast, but need Node and an installed
@@ -132,10 +138,16 @@ def _server_reachable(host: str = "127.0.0.1", port: int = 8000) -> bool:
         return probe.connect_ex((host, port)) == 0
 
 
+# Steps that need a running server. Skipping them here (rather than letting them
+# start and fail) keeps the check usable without a server, and the skip is reported
+# as SKIP — never as PASS, which would fake coverage.
+SERVER_STEPS = {"sse", "concurrent", "endpoints"}
+
+
 def run(step: Step, *, index_present: bool) -> tuple[bool, str, float]:
     if step.needs_index and not index_present:
         return True, "skipped (index not built)", 0.0
-    if step.key in {"sse", "concurrent"} and not _server_reachable():
+    if step.key in SERVER_STEPS and not _server_reachable():
         return True, "skipped 服务器未运行（127.0.0.1:8000）", 0.0
 
     environment = dict(os.environ)

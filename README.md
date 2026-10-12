@@ -8,11 +8,16 @@
 
 ## 功能
 
-- 对 `games.csv` 提供确定性统计：去重对局数、数据概览、英雄出场与胜率、Ban 统计、首个事件发生率与条件胜率、平均时长。
+- 对 `games.csv` 提供 11 个确定性统计工具：去重对局数、数据概览、英雄出场与胜率、
+  Ban 统计、首个事件发生率与条件胜率、平均时长、召唤师技能选取率与胜率、
+  「有/无某技能」的胜率对比、队伍目标均值（防御塔/水晶/男爵/小龙/峡谷先锋）、
+  以及项目文档检索。
 - 按 `gameId` 去重；原始 CSV 保持只读。数据为 2017-06-08 至 2017-09-06 UTC 的历史 EUW 排位对局。
 - 支持通过英雄数值 ID、Data Dragon 7.17.1 的中文名称/标题、英文标识符及登记别名查询；名称映射不代表逐场比赛补丁版本。
 - 对指标定义、数据口径和范围问题检索项目文档，并要求回答给出文档来源。
 - 对 API 不可用、Embedding 检索不可用和知识索引缺失返回明确错误；命令行输出使用 UTF-8。
+- 会拒绝数据不支持的问题（按颜色方比较胜率、用这份 2017 年数据判断当前版本强度、
+  某场比赛的出装等），而不是给出看似合理的数字。
 
 ## 技术栈
 
@@ -95,12 +100,23 @@ cd ..
 失败。此外 npm 需要用管道创建子进程，沙箱会拒绝该操作，因此 `npm install`
 / `npm run build` 需在放宽权限的终端中执行。
 
-离线检查（不调用任何模型 API，零配额）：
+本地检查（11 步）：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\run_checks.py          # 全部离线检查
+.\.venv\Scripts\python.exe scripts\run_checks.py          # 全部检查
 .\.venv\Scripts\python.exe scripts\run_checks.py --fast   # 提交前用的快速子集
 ```
+
+其中 8 步完全离线（语法编译、单元测试、索引一致性、元数据交叉验证、装备漂移核验、
+前端单测等），**不调用任何模型 API**；另有 3 步需要模型或本地服务器：
+
+- `SSE 分帧契约`、`并发轮次隔离`：需要本地服务器在 `127.0.0.1:8000` 运行
+- `Agent 行为阈值门禁`：默认回放 `.cache/eval_agent_cache.json` 中记录的回答，
+  **不调用模型**；缓存为空时才需要调用
+
+无法运行的步骤会标记为 `SKIP` 并附原因，**不会伪装成 PASS**。若账号额度耗尽，
+依赖该额度的步骤同样标记为 `SKIP`；额度可能在运行中途耗尽，此时会在步骤结束后
+依据输出中的额度标记改判为 `SKIP`，避免把"没跑成"报成"有缺陷"。
 
 如果本地知识索引不存在或源文档发生变化，构建/更新索引：
 
@@ -108,9 +124,9 @@ cd ..
 .\.venv\Scripts\python.exe scripts\index_knowledge.py
 ```
 
-索引命令会扫描 `kbase/` 下的全部 Markdown 文档（当前 42 份，按 `category` 分为
-`project` / `domain` / `conflict` / `meta` / `offtopic`），按标题路径分块并调用
-Embedding API；原始 CSV 不会被向量化。生成的 `reports/knowledge.db` 是本地文件，
+索引命令会扫描 `kbase/` 下的全部 Markdown 文档（当前 44 份 / 1171 个分块，按
+`category` 分为 `project` / `domain` / `conflict` / `meta` / `offtopic`），按标题路径分块并
+调用 Embedding API；原始 CSV 不会被向量化。生成的 `reports/knowledge.db` 是本地文件，
 已由 `.gitignore` 排除。`scripts/index_knowledge.py --dry-run` 可在不调用 API 的情况下
 预览分块结果，`--check` 可检查索引是否已过期。
 
@@ -126,9 +142,22 @@ Embedding API；原始 CSV 不会被向量化。生成的 `reports/knowledge.db`
 
 - 不按蓝方/红方拆分或比较胜率；`team1/team2` 仅是单局内队伍标识。
 - 数据没有玩家、分路、逐分钟过程或逐场 patch 信息；不能据此回答当前版本或分路排名。
+- 装备数据**不在对局 CSV 内**（61 个字段中没有任何装备字段），因此不能回答某场比赛
+  出了什么装备，也不能给出装备的选取率或胜率。装备数值只能作为静态目录事实给出。
 - 首个事件与获胜只报告统计关联，不声称因果。
-- `docs/metric_dictionary.md` 仍标为初稿：部分原始字段含义依赖公开二手说明，正式对外发布前应再核对原始数据集元数据。
+- `docs/metric_dictionary.md` 是归档记录（正文保留原样）。它先前标注的"初稿"所依据的
+  核实项——用数据集自带的元数据附件独立验证字段定义——**已完成**，结论与复现方式见
+  `kbase/project_data_audit.md` 的「元数据附件的独立验证（已完成）」，或直接运行
+  `scripts/verify_dataset_metadata.py`。
+- 装备数值随补丁变化，而 CSV 没有逐场 `patch` 字段，因此任何装备数值都必须连同补丁
+  版本与物品 ID 一起给出。见 `kbase/conflict_item_catalog_drift.md`。
 
 ## 评测
 
-统计参考案例见 `evals/cases.jsonl`；Agent 与 RAG 案例、用量记录和评测口径见 [评测说明](evals/README.md)。完整 10 案例回归按额度优先策略只运行过一次；最新提示词变更后的两个受影响案例已定向复测，详情见最终验收记录。
+统计参考案例见 `evals/cases.jsonl`（17 条）；Agent 与 RAG 行为案例见
+`evals/rag_cases.jsonl`（15 条），口径与用量记录见 [评测说明](evals/README.md)。
+
+Agent 行为由 `scripts/eval_agent.py` 按阈值门禁（工具选择、未调用禁止工具、检索命中、
+数值断言、未出现禁止声称），基线记录在 `evals/agent_baseline.json`：此前通过、现在失败的
+用例会被报告为**回归**并阻止；已记录的已知失败与抖动项则单独列出，不会伪装成通过。
+默认运行回放缓存，不消耗额度；`--refresh` 才重新提问。

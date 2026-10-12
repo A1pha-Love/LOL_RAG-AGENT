@@ -41,6 +41,20 @@ def pytest_configure(config: pytest.Config) -> None:
     os.environ.setdefault("PYTHONPYCACHEPREFIX", str(pycache))
 
 
+def _remove_with_retry(path: Path) -> None:
+    """Delete a file, tolerating Windows holding the handle briefly."""
+    import time
+
+    for attempt in range(5):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            time.sleep(0.1 * (attempt + 1))
+        except OSError:
+            return
+
+
 @pytest.fixture()
 def temp_path():
     """A unique file path under .cache/, removed when the test finishes.
@@ -53,18 +67,24 @@ def temp_path():
     try:
         yield path
     finally:
-        for attempt in range(5):
-            try:
-                path.unlink(missing_ok=True)
-                break
-            except PermissionError:  # Windows may hold the handle briefly
-                import time
-
-                time.sleep(0.1 * (attempt + 1))
+        _remove_with_retry(path)
 
 
 @pytest.fixture()
-def temp_db(temp_path):
-    """A unique SQLite database path under .cache/."""
-    return temp_path.with_suffix(".db")
+def temp_db():
+    """A unique SQLite database path under .cache/, removed when the test finishes.
+
+    This used to derive its path from ``temp_path``, which meant only the ``.tmp``
+    path was cleaned up and the ``.db`` file the code created was left behind — one
+    leaked file per test that used it, thousands of them over time. Each path is now
+    owned by the fixture that hands it out.
+    """
+    CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+    path = CACHE_ROOT / f"test-{uuid.uuid4().hex[:12]}.db"
+    try:
+        yield path
+    finally:
+        # SQLite in WAL mode also leaves these beside the database.
+        for candidate in (path, path.with_name(path.name + "-wal"), path.with_name(path.name + "-shm")):
+            _remove_with_retry(candidate)
 

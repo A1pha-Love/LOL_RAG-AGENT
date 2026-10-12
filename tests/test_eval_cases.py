@@ -47,6 +47,20 @@ def _load_cases() -> list[dict[str, Any]]:
 
 
 CASES = _load_cases()
+
+# The Agent-behaviour cases live in a separate file because they need a model call to
+# execute. Their *shape* can still be validated offline, which is what these use.
+AGENT_CASES_PATH = PROJECT_ROOT / "evals" / "rag_cases.jsonl"
+
+
+def _agent_cases() -> list[dict[str, Any]]:
+    if not AGENT_CASES_PATH.is_file():
+        pytest.skip(f"agent eval cases not present: {AGENT_CASES_PATH}")
+    return [
+        json.loads(line)
+        for line in AGENT_CASES_PATH.read_text(encoding="utf-8-sig").splitlines()
+        if line.strip()
+    ]
 CASE_IDS = [case["id"] for case in CASES]
 
 
@@ -220,6 +234,117 @@ def test_every_deterministic_tool_has_a_case() -> None:
 def test_reference_case_matches_the_tools(case: dict[str, Any]) -> None:
     actual = _run_case(case)
     _check_expected_block(case["expected"], actual, case["id"])
+
+
+@needs_dataset
+def test_agent_eval_cases_reference_only_real_tools() -> None:
+    """A case naming a tool that does not exist can never pass, and never will.
+
+    `evals/rag_cases.jsonl` gates tool selection, so a typo or a tool that was
+    renamed/removed turns the case into a permanent failure that looks like an Agent
+    defect. Guard the names against the real registry instead of discovering it from a
+    red check later.
+    """
+    import inspect
+
+    from lol_agent import tools as data_tools
+
+    registered = {
+        name
+        for name, value in vars(data_tools).items()
+        if inspect.isfunction(value) and name.startswith("get_")
+    } | {"search_project_knowledge"}
+
+    problems: list[str] = []
+    for case in _agent_cases():
+        for key in ("expected_tools", "forbidden_tools"):
+            unknown = set(case.get(key, [])) - registered
+            if unknown:
+                problems.append(f"{case['id']}.{key}: {sorted(unknown)}")
+    assert not problems, "rag_cases.jsonl references unknown tools: " + "; ".join(problems)
+
+
+@needs_dataset
+def test_agent_eval_cases_are_well_formed() -> None:
+    """The Agent cases carry the same fields the gate reads, so validate them."""
+    cases = _agent_cases()
+    assert cases, "evals/rag_cases.jsonl is empty"
+    seen: set[str] = set()
+    for case in cases:
+        assert case["id"] not in seen, f"duplicate case id {case['id']}"
+        seen.add(case["id"])
+        for key in ("id", "question"):
+            assert case.get(key), f"{case['id']} is missing {key}"
+        # An empty expected_tools is legitimate for a guardrail case: nothing may be
+        # called, and forbidden_tools states what specifically must not be. Such a case
+        # must still declare something, or it asserts nothing at all.
+        assert case.get("expected_tools") or case.get("forbidden_tools"), (
+            f"{case['id']} expects no tool and forbids none, so it asserts nothing"
+        )
+        for item in case.get("expected_retrieval", []):
+            assert "source" in item and "heading" in item, f"{case['id']}: bad retrieval item"
+        for assertion in case.get("numeric_assertions", []):
+            assert "tool" in assertion, f"{case['id']}: numeric assertion without a tool"
+            assert "numerator" in assertion and "denominator" in assertion, (
+                f"{case['id']}: numeric assertion must pin numerator and denominator"
+            )
+
+
+@needs_dataset
+def test_agent_numeric_assertions_match_the_actual_tool_shape() -> None:
+    """Assertions must use field names the tool actually returns.
+
+    One case asserted on a nested `role` key that no tool produces, so the assertion
+    could never match — an unfixable failure disguised as an Agent defect. Running the
+    tool and checking the asserted keys exist turns that class of mistake into a test
+    failure instead of a permanent red gate.
+    """
+    from lol_agent import tools as data_tools
+
+    problems: list[str] = []
+    for case in _agent_cases():
+        for assertion in case.get("numeric_assertions", []):
+            tool_name = assertion["tool"]
+            function = getattr(data_tools, tool_name, None)
+            if function is None:
+                problems.append(f"{case['id']}: unknown tool {tool_name}")
+                continue
+            arguments = {
+                key: value
+                for key, value in assertion.items()
+                if key not in ("tool", "numerator", "denominator", "value", "unit")
+            }
+            try:
+                payload = function(**arguments)
+            except TypeError:
+                # The assertion may name a field the tool does not accept; only the
+                # output shape is under test here, so fall back to no arguments.
+                payload = function()
+
+            blocks: list[dict] = []
+
+            def collect(value: Any) -> None:
+                if isinstance(value, dict):
+                    if "numerator" in value and "denominator" in value:
+                        blocks.append(value)
+                    for nested in value.values():
+                        collect(nested)
+                elif isinstance(value, list):
+                    for nested in value:
+                        collect(nested)
+
+            collect(payload)
+            if not blocks:
+                problems.append(f"{case['id']}: {tool_name} produced no numerator/denominator block")
+                continue
+            required = {"numerator", "denominator"}
+            if "unit" in assertion:
+                required.add("unit")
+            if not any(required <= set(block) for block in blocks):
+                problems.append(
+                    f"{case['id']}: {tool_name} has no block carrying {sorted(required)}"
+                )
+    assert not problems, "numeric assertions do not match tool output: " + "; ".join(problems)
 
 
 @needs_dataset

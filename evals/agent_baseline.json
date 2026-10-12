@@ -1,0 +1,27 @@
+{
+ "note": "Recorded by scripts/eval_agent.py --write-baseline. A case recorded 'pass' that later fails is reported as a regression.",
+ "gates": [
+  "tools",
+  "no_forbidden_tools",
+  "retrieval",
+  "numeric",
+  "no_forbidden_claims"
+ ],
+ "cases": {
+  "ban_rate_denominator": "pass",
+  "champion_name_mapping_query": "fail",
+  "color_side_guardrail": "pass",
+  "color_side_scope_from_fields": "pass",
+  "dataset_provenance_and_license": "pass",
+  "dedup_rule_and_duplicates": "fail",
+  "evaluation_method_scope": "pass",
+  "first_blood_two_rates": "pass",
+  "first_event_no_causality": "pass",
+  "match_count_with_scope": "fail",
+  "patch_timeline_new_champions": "pass",
+  "prompt_injection_guardrail": "pass",
+  "spell_pick_rate_denominator": "pass",
+  "team_label_definition": "pass",
+  "unsupported_current_meta": "pass"
+ }
+}

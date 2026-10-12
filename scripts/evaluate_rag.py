@@ -39,6 +39,22 @@ def _normalize_phrase(text: str) -> str:
     return re.sub(r"[\W_]+", "", text.casefold(), flags=re.UNICODE)
 
 
+def _normalize_with_map(text: str) -> tuple[str, list[int]]:
+    """Normalize, and record which raw index each normalized character came from.
+
+    Quote detection cannot run on the normalized text because normalization strips the
+    quote characters themselves, so positions have to be traced back to the original.
+    """
+    normalized: list[str] = []
+    positions: list[int] = []
+    for index, character in enumerate(text.casefold()):
+        if re.match(r"[\W_]", character, flags=re.UNICODE):
+            continue
+        normalized.append(character)
+        positions.append(index)
+    return "".join(normalized), positions
+
+
 def _requirement_options(requirement: str | list[str]) -> list[str]:
     return requirement if isinstance(requirement, list) else [requirement]
 
@@ -65,16 +81,51 @@ _NEGATION_PREFIX = re.compile(
 )
 _NEGATION_SUFFIX = re.compile(r"^(?:不成立|不正确|不代表|不是|并非|不存在|无法|不能|是错误的|属于错误说法)")
 
+# Prohibitions stated as a rule rather than a denial of a specific sentence, e.g.
+# "不允许自行评价关联强弱（例如说"强正向相关"）". The distance between the marker and
+# the quoted phrase can exceed the negation window, so these are matched separately.
+_PROHIBITION = re.compile(
+    r"(?:不允许|不得|禁止|严禁|不可|切勿|不应|不能|避免|只允许|只报告|不自行)"
+)
+# Straight and curly quotes, used to present a phrase as an example of what not to say.
+_QUOTE_CHARS = "\"'“”‘’「」『』《》"
 
-def _phrase_has_local_negation(normalized_answer: str, start: int, end: int) -> bool:
+
+def _phrase_is_inside_quotes(text: str, start: int, end: int) -> bool:
+    """Whether text[start:end] sits inside a quoted span."""
+    return text[start - 1:start] in _QUOTE_CHARS and text[end:end + 1] in _QUOTE_CHARS
+
+
+def _phrase_has_local_negation(
+    normalized_answer: str,
+    start: int,
+    end: int,
+    *,
+    raw_answer: str = "",
+    positions: list[int] | None = None,
+) -> bool:
     before = normalized_answer[max(0, start - 24):start]
     after = normalized_answer[end:end + 16]
-    return bool(_NEGATION_PREFIX.search(before) or _NEGATION_SUFFIX.search(after))
+    if _NEGATION_PREFIX.search(before) or _NEGATION_SUFFIX.search(after):
+        return True
+    # A quoted phrase introduced by a prohibition is being cited as what not to say,
+    # not asserted. Quoting alone is deliberately not enough: "所谓"强正向相关"确实成立"
+    # quotes the phrase while still asserting it, and that must remain a failure.
+    if raw_answer and positions and positions:
+        raw_start = positions[start]
+        raw_end = positions[end - 1] + 1
+        quoted = (
+            raw_answer[raw_start - 1:raw_start] in _QUOTE_CHARS
+            and raw_answer[raw_end:raw_end + 1] in _QUOTE_CHARS
+        )
+        if quoted and _PROHIBITION.search(normalized_answer[max(0, start - 60):start]):
+            return True
+    return False
 
 
 def _forbidden_claim_checks(case: dict[str, Any], answer: str) -> tuple[list[str], list[str]]:
     """Return likely unnegated hits and phrases seen only in a local negation."""
-    normalized_answer = _normalize_phrase(answer)
+    normalized_answer, positions = _normalize_with_map(answer)
     unnegated: list[str] = []
     negated: list[str] = []
     for claim in case.get("answer_must_not_claim", []):
@@ -88,7 +139,16 @@ def _forbidden_claim_checks(case: dict[str, Any], answer: str) -> tuple[list[str
             cursor = found + len(phrase)
         if not starts:
             continue
-        if all(_phrase_has_local_negation(normalized_answer, start, start + len(phrase)) for start in starts):
+        if all(
+            _phrase_has_local_negation(
+                normalized_answer,
+                start,
+                start + len(phrase),
+                raw_answer=answer,
+                positions=positions,
+            )
+            for start in starts
+        ):
             negated.append(claim)
         else:
             unnegated.append(claim)

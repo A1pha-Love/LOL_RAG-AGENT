@@ -16,6 +16,7 @@ failure is diagnosable without re-running with extra flags.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -121,6 +122,18 @@ def build_steps() -> list[Step]:
             argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "verify_api_endpoints.py")],
             fast=False,
         ),
+        Step(
+            key="agent_eval",
+            title="Agent 行为阈值门禁（有缓存则不调模型）",
+            argv=[
+                PYTHON,
+                str(PROJECT_ROOT / "scripts" / "eval_agent.py"),
+                # Known gaps are recorded in evals/agent_baseline.json; a case that
+                # used to pass and now fails is still reported as a regression.
+                "--allow-known-failures",
+            ],
+            fast=False,
+        ),
     ]
 
     # The frontend tests are offline and fast, but need Node and an installed
@@ -161,6 +174,21 @@ SERVER_STEPS = {"sse", "concurrent", "endpoints"}
 API_STEPS = {"kbase", "recall", "sse", "concurrent"}
 
 
+def _agent_eval_needs_model() -> bool:
+    """Whether the Agent evaluation would have to call the model.
+
+    With a populated cache it re-scores recorded answers, so the check still runs when
+    the API is unavailable — it just cannot detect changes that only a fresh answer
+    would reveal. An empty or missing cache means it must ask, so it becomes an API
+    step and is skipped for quota reasons rather than failing.
+    """
+    cache = PROJECT_ROOT / ".cache" / "eval_agent_cache.json"
+    try:
+        return not cache.is_file() or not json.loads(cache.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return True
+
+
 def _model_unavailable() -> str | None:
     """Reason the model API cannot be used, or None when it works."""
     import importlib.util
@@ -179,7 +207,9 @@ def run(step: Step, *, index_present: bool, model_reason: str | None = None) -> 
         return True, "skipped (index not built)", 0.0
     if step.key in SERVER_STEPS and not _server_reachable():
         return True, "skipped 服务器未运行（127.0.0.1:8000）", 0.0
-    if step.key in API_STEPS and model_reason:
+    # The Agent evaluation only needs the model when it has nothing cached to replay.
+    needs_model = step.key in API_STEPS or (step.key == "agent_eval" and _agent_eval_needs_model())
+    if needs_model and model_reason:
         return True, f"skipped {model_reason}", 0.0
 
     environment = dict(os.environ)

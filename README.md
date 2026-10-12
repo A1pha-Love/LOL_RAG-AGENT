@@ -137,7 +137,8 @@ cd ..
 ## 目录说明
 
 - `src/lol_agent/`：Agent、统计工具、Embedding 适配器和本地 RAG 检索。
-- `docs/`：指标字典、英雄映射说明及 7.17.1 映射数据。
+- `docs/`：指标字典、英雄映射说明及 7.17.1 映射数据；`docs/annotation_style_guide.md`
+  说明本项目的代码注释规范（核心代码已按该规范补充详细中文注释，便于学习）。
 - `reports/data_audit.md`：数据审计结果；`reports/final_acceptance.md`：验收结论、验证证据与限制。
 - `evals/`：统计参考案例、RAG/Agent 案例及检索阈值校准数据。
 - `scripts/`：CLI、索引、审计、检索校准和评测入口。

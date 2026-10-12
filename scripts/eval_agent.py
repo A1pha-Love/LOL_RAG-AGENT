@@ -35,6 +35,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,6 +43,11 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
+
+# Imported for its side effect: it loads .env, so QWEN_CHAT_MODEL is set before any
+# fingerprint is computed. Relying on a transitive import instead would make the cache
+# key depend on import order, which is exactly the kind of thing that fails silently.
+from lol_agent import config as _config  # noqa: E402,F401
 
 CASES_PATH = PROJECT_ROOT / "evals" / "rag_cases.jsonl"
 CACHE_PATH = PROJECT_ROOT / ".cache" / "eval_agent_cache.json"
@@ -92,9 +98,22 @@ class RunResult:
 
 
 def question_fingerprint(case: dict[str, Any]) -> str:
-    """Key a cached response to the exact question asked, not just the case id."""
+    """Key a cached response to the exact question *and the model that answered it*.
+
+    The model is part of the key because answers are not comparable across models: a
+    cache recorded with one model would otherwise be replayed as if it were the current
+    model's behaviour, so switching models would silently keep reporting the old
+    model's pass rate. Including the name means a switch invalidates every entry, which
+    is the honest outcome — the next run records fresh answers.
+    """
     payload = json.dumps(
-        {"id": case["id"], "question": case["question"]}, ensure_ascii=False, sort_keys=True
+        {
+            "id": case["id"],
+            "question": case["question"],
+            "model": os.getenv("QWEN_CHAT_MODEL", "").strip(),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
@@ -113,48 +132,52 @@ def save_cache(cache: dict[str, Any]) -> None:
 
 
 def run_case_live(case: dict[str, Any], helpers) -> dict[str, Any]:
-    """Ask the Agent once and capture everything the scorers need."""
-    from langchain_core.messages import HumanMessage
+    """Ask the Agent once through the production turn path and capture the scoring data.
 
-    from lol_agent.agent import build_agent
+    Uses `_eval_turn.invoke_case` rather than calling the graph directly: without a
+    `TurnContext` the retrieval query falls back to the model's own phrasing, which is
+    not what production does, so grading that path would record behaviour users never
+    see. See `scripts/_eval_turn.py` for the details.
+    """
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from _eval_turn import (
+        invoke_case_tolerant,
+        retrieval_hits,
+        retrieval_queries_used,
+        tool_results,
+    )
 
-    graph = build_agent()
-    result = graph.invoke({"messages": [HumanMessage(content=case["question"])]})
-    messages = result["messages"]
+    messages, error = invoke_case_tolerant(case["question"])
+    if error:
+        # Surfaced as a case failure rather than an exception: whether the model passes
+        # valid tool arguments is exactly the kind of thing this evaluation measures.
+        raise RuntimeError(f"turn aborted: {error}")
 
     called: list[str] = []
-    tool_results: dict[str, list[Any]] = {}
     for message in messages:
         for call in getattr(message, "tool_calls", []) or []:
             if call.get("name"):
                 called.append(call["name"])
-        if getattr(message, "type", None) == "tool":
-            tool_results.setdefault(message.name, []).append(
-                helpers._parse_tool_content(message.content)
-            )
 
-    retrieved = [
-        chunk
-        for response in tool_results.get("search_project_knowledge", [])
-        for chunk in (
-            response
-            if isinstance(response, list)
-            else response.get("results", []) if isinstance(response, dict) else []
-        )
-        if isinstance(chunk, dict)
-    ]
+    # Consume the message objects here: only plain data may reach the cache.
+    tool_payloads: dict[str, list[Any]] = {}
+    for name in {m.name for m in messages if getattr(m, "type", None) == "tool" and m.name}:
+        tool_payloads[name] = tool_results(messages, name)
+
     answer = messages[-1].content
     if not isinstance(answer, str):
         answer = str(answer)
 
     return {
         "called_tools": sorted(set(called)),
-        # Consume the message objects here: only plain data may reach the cache.
-        "tool_results": json.loads(json.dumps(tool_results, ensure_ascii=False, default=str)),
+        "tool_results": json.loads(json.dumps(tool_payloads, ensure_ascii=False, default=str)),
         "retrieved": [
             {"source": chunk.get("source"), "heading_path": chunk.get("heading_path")}
-            for chunk in retrieved
+            for chunk in retrieval_hits(messages)
         ],
+        # Kept so a miss can be diagnosed later: without the query, only the symptom
+        # is recorded, and the cause has to be guessed.
+        "retrieval_queries": retrieval_queries_used(messages),
         "answer": answer,
     }
 

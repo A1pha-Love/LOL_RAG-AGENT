@@ -209,7 +209,14 @@ def current_turn() -> TurnContext | None:
 
 
 def current_retrieval_query(question: str) -> str:
-    """The query retrieval should use, applying the rewrite when one exists."""
+    """The query retrieval should use, applying the rewrite when one exists.
+
+    Note that when a turn context exists, the rewrite wins and the ``query`` argument
+    the model passed is ignored. That is deliberate: the rewrite is produced from the
+    user's own wording, and measurements showed the model's phrasing retrieves worse.
+    The model's argument is only used outside a session (no context), such as a bare
+    graph invocation in a script.
+    """
     context = _TURN.get()
     if context is None:
         return question
@@ -253,7 +260,13 @@ def build_agent(*, temperature: float | None = None):
 
     graph = StateGraph(MessagesState)
     graph.add_node("agent", call_model)
-    graph.add_node("tools", ToolNode(AGENT_TOOLS))
+    # A tool that rejects its arguments must not abort the turn. Observed in practice:
+    # the model sometimes calls a ranking tool with limit=0, which raises ValueError;
+    # without a handler that exception escapes `invoke` and the whole question fails,
+    # whereas returning the message lets the model see the problem and retry with valid
+    # arguments. The tool's own validation stays strict — the error is surfaced, not
+    # swallowed.
+    graph.add_node("tools", ToolNode(AGENT_TOOLS, handle_tool_errors=True))
     graph.add_edge(START, "agent")
     graph.add_conditional_edges("agent", tools_condition, {"tools": "tools", END: END})
     graph.add_edge("tools", "agent")

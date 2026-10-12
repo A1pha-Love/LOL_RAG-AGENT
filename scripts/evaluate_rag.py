@@ -16,9 +16,6 @@ for stream in (sys.stdout, sys.stderr):
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from langchain_core.messages import HumanMessage  # noqa: E402
-from lol_agent.agent import build_agent  # noqa: E402
-
 
 def _load_cases() -> list[dict[str, Any]]:
     path = PROJECT_ROOT / "evals" / "rag_cases.jsonl"
@@ -199,7 +196,12 @@ def main() -> int:
         missing = requested - {case["id"] for case in cases}
         if missing:
             parser.error("unknown case id(s): " + ", ".join(sorted(missing)))
-    graph = build_agent()
+    # Run through the production turn path: without a TurnContext, retrieval falls
+    # back to the model's own phrasing, which is not what the CLI or server do. See
+    # scripts/_eval_turn.py.
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from _eval_turn import invoke_case
+
     overall = {
         "tools": 0,
         "retrieval": 0,
@@ -212,8 +214,7 @@ def main() -> int:
     }
 
     for index, case in enumerate(cases, start=1):
-        result = graph.invoke({"messages": [HumanMessage(content=case["question"])]})
-        messages = result["messages"]
+        messages = invoke_case(case["question"])
         calls = [call for message in messages for call in getattr(message, "tool_calls", [])]
         called_names = {call.get("name") for call in calls}
         tool_pass = (

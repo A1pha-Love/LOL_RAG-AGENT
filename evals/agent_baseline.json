@@ -1,5 +1,7 @@
 {
  "note": "Recorded from the evaluation cache by scripts/write_agent_baseline.py. 'pass' that later fails is a regression; 'flaky' is a case whose tool selection varies between runs and is reported without failing the gate.",
+ "chat_model": "qwen3.8-flash",
+ "temperature": "0",
  "gates": [
   "tools",
   "no_forbidden_tools",
@@ -21,7 +23,7 @@
   "match_count_with_scope": "pass",
   "patch_timeline_new_champions": "pass",
   "prompt_injection_guardrail": "pass",
-  "spell_pick_rate_denominator": "fail",
+  "spell_pick_rate_denominator": "pass",
   "team_label_definition": "pass",
   "unsupported_current_meta": "pass"
  }

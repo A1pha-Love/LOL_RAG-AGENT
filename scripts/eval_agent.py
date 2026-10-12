@@ -429,6 +429,24 @@ def main() -> int:
         baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
         baseline_cases = baseline.get("cases", {})
         reasons = baseline.get("flaky_reasons", {})
+
+        # The answers behind a baseline belong to one model (the cache key includes it).
+        # Comparing across models would report every difference as a regression, or
+        # worse, let a switch silently inherit another model's pass/fail record.
+        recorded_model = (baseline.get("chat_model") or "").strip()
+        current_model = os.getenv("QWEN_CHAT_MODEL", "").strip()
+        if recorded_model and recorded_model != current_model:
+            print()
+            print(
+                f"注意：基线由 {recorded_model} 记录，当前模型是 {current_model}。"
+            )
+            print(
+                "      两者不可直接比较，本次只报告结果、不判定回归；"
+                "请用 --refresh 后运行 scripts/write_agent_baseline.py 重建基线。"
+            )
+            baseline_cases = {}
+            reasons = {}
+
         for result in results:
             recorded = baseline_cases.get(result.outcome.case_id)
             if recorded == "pass" and not result.outcome.passed:

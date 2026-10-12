@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -97,6 +98,12 @@ def main() -> int:
                     "'pass' that later fails is a regression; 'flaky' is a case whose tool "
                     "selection varies between runs and is reported without failing the gate."
                 ),
+                # Which model these results describe. The cache key includes the model,
+                # so the answers behind this baseline belong to one specific model;
+                # without recording it, a baseline recorded under a different model would
+                # look like it still applies after a switch.
+                "chat_model": os.getenv("QWEN_CHAT_MODEL", "").strip(),
+                "temperature": os.getenv("QWEN_TEMPERATURE", "").strip() or "provider-default",
                 "gates": list(gate.GATES),
                 "flaky_reasons": flaky,
                 "cases": dict(sorted(results.items())),
@@ -109,6 +116,8 @@ def main() -> int:
     )
 
     print(f"  {len(results)} cases written to {BASELINE_PATH.relative_to(PROJECT_ROOT)}")
+    print(f"  chat_model: {os.getenv('QWEN_CHAT_MODEL', '').strip() or '(unset)'}"
+          f"  temperature: {os.getenv('QWEN_TEMPERATURE', '').strip() or 'provider-default'}")
     print(f"  pass  {len(passed)}: {sorted(passed)}")
     print(f"  fail  {len(failed)}: {sorted(failed) or '(none)'}")
     print(f"  flaky {len(flaky_cases)}: {sorted(flaky_cases)}")

@@ -110,6 +110,12 @@ def build_steps() -> list[Step]:
             fast=False,
         ),
         Step(
+            key="items",
+            title="装备目录漂移核验（离线）",
+            argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "verify_item_drift.py")],
+            fast=False,
+        ),
+        Step(
             key="endpoints",
             title="接口冒烟（需服务器，不调模型）",
             argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "verify_api_endpoints.py")],

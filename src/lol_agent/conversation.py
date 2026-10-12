@@ -674,8 +674,10 @@ def rewrite_query(question: str, history: list[Turn]) -> tuple[str, str | None]:
 
         # 中文说明：改写用独立的 ChatOpenAI，没有 bind_tools、也没有设置 temperature——它只做
         # 一次单轮文本生成（与 build_agent 里那个绑定工具、可配温度的模型是两回事）。
+        # 默认模型必须与 agent.build_agent 及 .env.example 保持一致，否则「不设环境变量时
+        # 用哪个模型」会因调用点不同而不同。
         model = ChatOpenAI(
-            model=os.getenv("QWEN_CHAT_MODEL", "qwen3.7-flash").strip(),
+            model=os.getenv("QWEN_CHAT_MODEL", "qwen3.8-flash").strip(),
             api_key=require_api_key(),
             base_url=chat_base_url(),
         )

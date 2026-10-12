@@ -386,7 +386,10 @@ def build_agent(*, temperature: float | None = None):
     #         环境变量 > 不传（交给服务商默认）」。
     #   返回：编译好的图（可直接 .invoke({...})）。
     base_url = chat_base_url()
-    model_name = os.getenv("QWEN_CHAT_MODEL", "qwen3.7-flash").strip()
+    # 中文说明：默认模型与 .env.example 中 QWEN_CHAT_MODEL 的值保持一致——该文件的约定是
+    # 「注释里给出的值就是代码默认值」，因此两者必须同时修改，否则不设该变量时的行为会与
+    # 文档不符。换模型只需改 .env，无需改代码。
+    model_name = os.getenv("QWEN_CHAT_MODEL", "qwen3.8-flash").strip()
     if temperature is None:
         configured = os.getenv("QWEN_TEMPERATURE", "").strip()
         # 中文说明：环境变量永远是字符串，必须显式转 float；空串视为「没配」。默认不设温度，

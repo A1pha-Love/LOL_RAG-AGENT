@@ -2,6 +2,113 @@
 
 面向本地 League of Legends 历史排位赛数据的中文分析 Agent。项目通过 LangGraph 编排单 Agent，用 Qwen 对话模型选择工具；精确统计由 Python 工具完成，项目文档由本地 RAG 检索后作为回答依据。
 
+**核心设计原则：数值一律由 Python 计算，不让模型估算。** 模型只负责选择工具、检索文档并
+组织回答；任何统计数字都来自对局数据本身，且附分子/分母口径与文档来源。
+
+---
+
+## 快速开始
+
+### 0. 前提条件
+
+| 需要 | 说明 |
+|---|---|
+| **Python 3.14** | `pyproject.toml` 要求 `>=3.14,<3.15` |
+| **DashScope API Key** | 对话与向量请求共用；在阿里云百炼控制台申请 |
+| **对局数据集** | `ShuJuYuan/games.csv`。**该文件不在仓库中**（见下一步）|
+| Node.js 20+ | *仅*在需要重新构建前端或开发界面时才需要；仓库已含构建产物 |
+
+### 1. 获取对局数据（必做）
+
+`games.csv` 因体积与许可原因未纳入版本库，需要自行下载：
+
+- 数据集：Kaggle [datasnaek/league-of-legends](https://www.kaggle.com/datasets/datasnaek/league-of-legends)
+  （作者 Mitchell J，许可 **CC0: Public Domain**）
+- 把其中的 `games.csv` 放到 `ShuJuYuan/games.csv`
+- 校验：文件应为 **9,287,739 字节**。若字节数不同，说明下载到的版本不同，统计数字会随之变化
+
+> 仓库中**已包含**数据集附带的元数据文件（`champion_info.json`、`champion_info_2.json`、
+> `summoner_spell_info.json`），无需另外下载。
+
+### 2. 创建虚拟环境并安装依赖
+
+在项目根目录执行（下同）：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+```
+
+`requirements-lock.txt` 是锁定版本，可复现；`pyproject.toml` 声明直接依赖。
+下文所有命令都假定当前目录是项目根目录，并统一使用 `.\.venv\Scripts\python.exe`。
+
+### 3. 配置 API Key
+
+```powershell
+Copy-Item .env.example .env
+```
+
+然后编辑 `.env`，只需填一项：
+
+```ini
+DASHSCOPE_API_KEY=你的Key
+```
+
+**其余变量都有可用默认值**（`.env.example` 中逐项注明用途），默认对话模型为
+`qwen3.8-flash`、向量模型为 `qwen3.7-text-embedding`。`.env` 已在 `.gitignore` 中，
+不会被提交。
+
+### 4. 构建知识索引（必做一次）
+
+RAG 检索依赖本地 SQLite 索引，仓库不含该文件（`reports/knowledge.db`）：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\index_knowledge.py
+```
+
+该命令会扫描 `kbase/` 下全部 Markdown 文档（44 份 / 约 1171 个分块），调用 Embedding API
+生成向量并写入 `reports/knowledge.db`。**这一步消耗向量额度**，只需在首次或 `kbase/`
+变更后运行。想先看看会切出什么，可用 `--dry-run`（不调用 API）。
+
+### 5. 启动并打开界面
+
+**方式一（推荐）：双击 `LOL-AGENT.lnk`**
+
+仓库根目录提供了启动入口，它会启动后端、等待就绪后自动打开浏览器，并先做三项前置检查
+（虚拟环境、`.env`、前端构建产物），失败时给出可读提示。停止服务只需关闭
+「LOL-AGENT backend」窗口。
+
+**方式二：命令行**
+
+```powershell
+.\.venv\Scripts\python.exe scripts\serve.py
+```
+
+然后访问 <http://127.0.0.1:8000>。后端会同时托管已构建的前端界面，因此单端口即可
+（交互式 API 文档在 `/docs`）。
+
+**方式三：不用界面，直接问答**
+
+```powershell
+# 单轮问答（不读写会话库）
+.\.venv\Scripts\python.exe scripts\chat_session.py --once "这份数据去重后有多少场比赛？"
+
+# 多轮对话（会话持久化到 .cache/sessions.db）
+.\.venv\Scripts\python.exe scripts\chat_session.py
+```
+
+### 6. 确认部署正确
+
+```powershell
+# 三个端点是否连通（对话 / 向量 / 重排）
+.\.venv\Scripts\python.exe scripts\check_api_key.py
+
+# 全部本地检查（11 步；不能运行的会标 SKIP，不会伪装成通过）
+.\.venv\Scripts\python.exe scripts\run_checks.py
+```
+
+---
+
 ## 项目状态
 
 本地 MVP 已完成。**收尾时的实际状态、验证方式与已知限制见
@@ -50,12 +157,17 @@ Copy-Item .env.example .env
 - **`QWEN_EMBEDDING_MODEL`**：换模型会让已存向量全部失效，必须重跑
   `scripts/index_knowledge.py`。
 
+**改配置后必须重启服务**：`.env` 只在进程启动时读取一次，换 Key 或换模型都不会热生效。
+
 不要把 `.env` 提交到版本库（已在 `.gitignore` 中）。API Key 同时用于对话与向量请求；
 调用会产生相应服务用量。
 
-## 安装和运行
+## 使用方式
 
-在项目根目录使用已配置好的虚拟环境：
+界面上是三栏布局：会话列表 / 对话流 / **检索过程面板**（改写后的查询、工具调用、命中
+分块与分数）。检索面板会显示每个分块的来源与 rerank 分数，便于判断回答依据是否可靠。
+
+命令行入口：
 
 ```powershell
 # 无状态单轮问答（不读写会话库）
@@ -67,7 +179,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe scripts\chat_session.py --session <id> -q "那他的胜率呢？"
 
 # HTTP 后端（流式问答，SSE）
-.\.venv\Scripts\python.exe scripts\serve.py            # http://127.0.0.1:8000/docs
+.\.venv\Scripts\python.exe scripts\serve.py            # 交互式 API 文档在 /docs
 ```
 
 多轮对话会在检索前把「历史 + 当前问题」改写成独立查询，因此
@@ -78,70 +190,40 @@ Copy-Item .env.example .env
 
 ## 前端界面（Vue 3 + Vite + TypeScript）
 
-三栏布局：会话列表 / 对话流 / **检索过程面板**（改写后的查询、工具调用、命中分块与分数）。
+**仓库已包含构建产物（`frontend/dist`），通常无需自行构建。** 只有在改动前端源码后
+才需要重新构建。需要 Node.js 20+。
 
 ```powershell
-# 开发模式（热更新；/api 由 Vite 代理到后端）
 cd frontend
 npm install
-npm run dev            # http://127.0.0.1:5173
+npm run build          # 产物写入 frontend/dist，由后端托管
 ```
 
-生产模式为单端口：先构建，再由后端托管界面。
+开发模式（热更新；`/api` 由 Vite 代理到后端）：
 
 ```powershell
 cd frontend
-npm run build          # 产物写入 frontend/dist
-cd ..
-.\.venv\Scripts\python.exe scripts\serve.py
+npm run dev            # http://127.0.0.1:5173
 ```
-
-后端启动时若发现 `frontend/dist` 存在，会在同一端口挂载界面，直接访问
-`http://127.0.0.1:8000` 即可，无需再开 Vite。
 
 **npm 注意事项**：仓库根与 `frontend/` 下都放了 `.npmrc`，把 npm 缓存指向项目内
 `.cache/npm`。默认缓存位于工作区之外，在受限沙箱下会导致每次安装都以 `EPERM`
 失败。此外 npm 需要用管道创建子进程，沙箱会拒绝该操作，因此 `npm install`
 / `npm run build` 需在放宽权限的终端中执行。
 
-本地检查（11 步）：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\run_checks.py          # 全部检查
-.\.venv\Scripts\python.exe scripts\run_checks.py --fast   # 提交前用的快速子集
-```
-
-其中 8 步完全离线（语法编译、单元测试、索引一致性、元数据交叉验证、装备漂移核验、
-前端单测等），**不调用任何模型 API**；另有 3 步需要模型或本地服务器：
-
-- `SSE 分帧契约`、`并发轮次隔离`：需要本地服务器在 `127.0.0.1:8000` 运行
-- `Agent 行为阈值门禁`：默认回放 `.cache/eval_agent_cache.json` 中记录的回答，
-  **不调用模型**；缓存为空时才需要调用
-
-无法运行的步骤会标记为 `SKIP` 并附原因，**不会伪装成 PASS**。若账号额度耗尽，
-依赖该额度的步骤同样标记为 `SKIP`；额度可能在运行中途耗尽，此时会在步骤结束后
-依据输出中的额度标记改判为 `SKIP`，避免把"没跑成"报成"有缺陷"。
-
-如果本地知识索引不存在或源文档发生变化，构建/更新索引：
-
-```powershell
-.\.venv\Scripts\python.exe scripts\index_knowledge.py
-```
-
-索引命令会扫描 `kbase/` 下的全部 Markdown 文档（当前 44 份 / 1171 个分块，按
-`category` 分为 `project` / `domain` / `conflict` / `meta` / `offtopic`），按标题路径分块并
-调用 Embedding API；原始 CSV 不会被向量化。生成的 `reports/knowledge.db` 是本地文件，
-已由 `.gitignore` 排除。`scripts/index_knowledge.py --dry-run` 可在不调用 API 的情况下
-预览分块结果，`--check` 可检查索引是否已过期。
-
 ## 目录说明
 
-- `src/lol_agent/`：Agent、统计工具、Embedding 适配器和本地 RAG 检索。
+- `src/lol_agent/`：Agent、统计工具、Embedding 适配器和本地 RAG 检索。核心代码已按
+  [`docs/annotation_style_guide.md`](docs/annotation_style_guide.md) 补充详细中文注释，
+  适合作为学习 RAG / Agent 工程的入口。
 - `docs/`：指标字典、英雄映射说明及 7.17.1 映射数据；`docs/annotation_style_guide.md`
-  说明本项目的代码注释规范（核心代码已按该规范补充详细中文注释，便于学习）。
-- `reports/data_audit.md`：数据审计结果；`reports/final_acceptance.md`：验收结论、验证证据与限制。
+  说明本项目的代码注释规范。
+- `kbase/`：检索用的项目文档（指标口径、数据审计、版本冲突样本等），是 RAG 的知识源。
+- `reports/data_audit.md`：数据审计结果；`reports/project_closeout.md`：收尾状态、验证
+  方式与已知限制；`reports/knowledge.db`：本地构建的检索索引（**不在仓库中**）。
 - `evals/`：统计参考案例、RAG/Agent 案例及检索阈值校准数据。
-- `scripts/`：CLI、索引、审计、检索校准和评测入口。
+- `scripts/`：CLI、索引、评测与检查入口。开发过程中的一次性工具已归档到
+  `scripts/archive/`（用途见该目录 README，**不要在日常流程中运行**）。
 
 ## 数据与回答边界
 
@@ -157,6 +239,24 @@ cd ..
 - 装备数值随补丁变化，而 CSV 没有逐场 `patch` 字段，因此任何装备数值都必须连同补丁
   版本与物品 ID 一起给出。见 `kbase/conflict_item_catalog_drift.md`。
 
+## 本地检查
+
+```powershell
+.\.venv\Scripts\python.exe scripts\run_checks.py          # 全部检查（11 步）
+.\.venv\Scripts\python.exe scripts\run_checks.py --fast   # 提交前用的快速子集
+```
+
+其中 8 步完全离线（语法编译、单元测试、索引一致性、元数据交叉验证、装备漂移核验、
+前端单测等），**不调用任何模型 API**；另有 3 步需要模型或本地服务器：
+
+- `SSE 分帧契约`、`并发轮次隔离`：需要本地服务器在 `127.0.0.1:8000` 运行
+- `Agent 行为阈值门禁`：默认回放 `.cache/eval_agent_cache.json` 中记录的回答，
+  **不调用模型**；缓存为空时才需要调用
+
+无法运行的步骤会标记为 `SKIP` 并附原因，**不会伪装成 PASS**。若账号额度耗尽，
+依赖该额度的步骤同样标记为 `SKIP`；额度可能在运行中途耗尽，此时会在步骤结束后
+依据输出中的额度标记改判为 `SKIP`，避免把「没跑成」报成「有缺陷」。
+
 ## 评测
 
 统计参考案例见 `evals/cases.jsonl`（17 条）；Agent 与 RAG 行为案例见
@@ -166,3 +266,6 @@ Agent 行为由 `scripts/eval_agent.py` 按阈值门禁（工具选择、未调�
 数值断言、未出现禁止声称），基线记录在 `evals/agent_baseline.json`：此前通过、现在失败的
 用例会被报告为**回归**并阻止；已记录的已知失败与抖动项则单独列出，不会伪装成通过。
 默认运行回放缓存，不消耗额度；`--refresh` 才重新提问。
+
+**基线绑定模型**：基线记录它所属的 `chat_model` 与 `temperature`，评测缓存键也包含模型名。
+换模型后旧基线不会继续沿用，需要 `--refresh` 后重建（`scripts/write_agent_baseline.py`）。

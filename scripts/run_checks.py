@@ -104,6 +104,12 @@ def build_steps() -> list[Step]:
             fast=False,
         ),
         Step(
+            key="metadata",
+            title="数据集元数据交叉验证",
+            argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "verify_dataset_metadata.py")],
+            fast=False,
+        ),
+        Step(
             key="endpoints",
             title="接口冒烟（需服务器，不调模型）",
             argv=[PYTHON, str(PROJECT_ROOT / "scripts" / "verify_api_endpoints.py")],

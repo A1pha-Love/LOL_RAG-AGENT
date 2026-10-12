@@ -457,3 +457,34 @@ def test_rewrite_prompt_carries_history_and_question() -> None:
 def test_rewrite_prompt_forbids_explanation() -> None:
     """The model must return only the query, or parsing needs to be clever."""
     assert "只输出改写后的查询本身" in conv.REWRITE_PROMPT
+
+
+def test_rewrite_without_history_never_builds_a_chat_client() -> None:
+    """No history means no pronouns to resolve, so the question is already standalone.
+
+    Pinned because the cost is invisible: without the early return, every first turn of
+    every conversation would spend an extra model call, and nothing would fail loudly.
+    The check installs a client stub that raises if one is ever constructed, which is
+    deterministic rather than a timing assertion.
+    """
+    import langchain_openai
+
+    class _ExplodingClient:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("rewrite must not build a chat client without history")
+
+    question = "这份数据去重后有多少场比赛？"
+    real = langchain_openai.ChatOpenAI
+    langchain_openai.ChatOpenAI = _ExplodingClient
+    try:
+        rewritten, fallback = conv.rewrite_query(question, [])
+    finally:
+        langchain_openai.ChatOpenAI = real
+
+    assert rewritten == question, "the question must pass through unchanged"
+    assert fallback is None, "a no-op rewrite is not a fallback"
+
+
+def test_rewrite_rejects_an_empty_question() -> None:
+    with pytest.raises(ValueError):
+        conv.rewrite_query("   ", [])

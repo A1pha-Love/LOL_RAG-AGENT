@@ -195,14 +195,14 @@ def _agent_eval_needs_model() -> bool:
         return True
 
 
-def _quota_reasons() -> dict[str, str]:
-    """Probe each quota once: several steps share a dependency and the answer is equal."""
+def _probe_quota_reasons() -> tuple[dict[str, str], Any]:
+    """Probe each quota once, and return the module holding the marker list."""
     import importlib.util
 
     scripts_dir = PROJECT_ROOT / "scripts"
     spec = importlib.util.spec_from_file_location("_checks_http", scripts_dir / "_http.py")
     if spec is None or spec.loader is None:
-        return {}
+        return {}, None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     reasons: dict[str, str] = {}
@@ -213,7 +213,27 @@ def _quota_reasons() -> dict[str, str]:
         reason = probe()
         if reason:
             reasons[kind] = reason
-    return reasons
+    return reasons, module
+
+
+def _quota_failure_in_output(output: str, module: Any) -> str | None:
+    """Detect a quota refusal in a finished step's output, after the fact.
+
+    The pre-flight probe is not sufficient on its own: quota can run out *between* the
+    probe and the step's own API calls, which happened in practice — a step reported a
+    defect when the real cause was the account being refused mid-run. Reporting that as
+    a failure both misleads and hides the fact that the check never really ran.
+
+    This is deliberately conservative: only a known billing/quota marker in the output
+    is treated as a skip, so a genuine defect is still reported as one.
+    """
+    if module is None:
+        return None
+    lowered = output.lower()
+    for marker in module.QUOTA_MARKERS:
+        if marker in lowered:
+            return f"运行中额度耗尽（输出含 {marker}）"
+    return None
 
 
 def run(
@@ -221,6 +241,7 @@ def run(
     *,
     index_present: bool,
     quota_reasons: dict[str, str] | None = None,
+    http_module: Any = None,
 ) -> tuple[bool, str, float]:
     quota_reasons = quota_reasons or {}
     if step.needs_index and not index_present:
@@ -259,6 +280,12 @@ def run(
     # would fake coverage. Exit code 77 is the conventional "skipped" signal.
     if completed.returncode == 77:
         return True, f"skipped {output.strip()}", elapsed
+    if completed.returncode != 0:
+        # The quota may have run out after the pre-flight probe said it was fine. In
+        # that case the step did not really run, so reporting a defect would be wrong.
+        quota_reason = _quota_failure_in_output(output, http_module)
+        if quota_reason:
+            return True, f"skipped {quota_reason}", elapsed
     return completed.returncode == 0, output, elapsed
 
 
@@ -277,7 +304,7 @@ def main() -> int:
 
     index_present = (PROJECT_ROOT / "reports" / "knowledge.db").is_file()
     # Probed once per dependency: several steps share one, and the answer is the same.
-    quota_reasons = _quota_reasons()
+    quota_reasons, http_module = _probe_quota_reasons()
     print("=" * 88)
     print(f"离线检查（{len(steps)} 步）{'— 快速模式' if args.fast else ''}")
     for kind, reason in quota_reasons.items():
@@ -286,7 +313,12 @@ def main() -> int:
 
     failures: list[tuple[Step, str]] = []
     for step in steps:
-        ok, output, elapsed = run(step, index_present=index_present, quota_reasons=quota_reasons)
+        ok, output, elapsed = run(
+            step,
+            index_present=index_present,
+            quota_reasons=quota_reasons,
+            http_module=http_module,
+        )
         marker = "PASS" if ok else "FAIL"
         note = ""
         if output.strip().startswith("skipped"):

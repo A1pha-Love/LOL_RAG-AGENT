@@ -37,5 +37,12 @@ reports/knowledge.db -diff -linguist-generated
 frontend/package-lock.json -diff -linguist-generated
 .cache/** -diff -linguist-generated
 
+# frontend/dist is committed (so the app runs without a Node toolchain) and must be
+# stored byte-for-byte: index.html references its assets by content hash, so a line
+# ending rewritten on checkout would break the reference. The bundler emits LF today,
+# which the `eol=lf` policy above happens to preserve — `-text` makes that guarantee
+# explicit rather than incidental, and keeps a future CRLF-emitting build safe.
+frontend/dist/** -text
+
 # Keep the dataset out of language detection: it is data, not source.
 ShuJuYuan/** -linguist-vendored

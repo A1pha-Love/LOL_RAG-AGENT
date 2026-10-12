@@ -38,13 +38,17 @@ class EvalSession:
     turns: list[Any] = field(default_factory=list)
 
 
-def invoke_case(question: str) -> list[Any]:
-    """Run one question through the production turn path and return the messages."""
+def invoke_case(question: str, *, temperature: float | None = None) -> list[Any]:
+    """Run one question through the production turn path and return the messages.
+
+    ``temperature`` is passed through to `build_agent`; leaving it None keeps the
+    configured/default sampling, so callers that do not care are unaffected.
+    """
     session = EvalSession()
     context = prepare_turn(session, question)
     token = _TURN.set(context)
     try:
-        result = build_agent().invoke(
+        result = build_agent(temperature=temperature).invoke(
             {"messages": [*session_messages(session), HumanMessage(content=question)]}
         )
     finally:
@@ -52,7 +56,9 @@ def invoke_case(question: str) -> list[Any]:
     return result["messages"]
 
 
-def invoke_case_tolerant(question: str) -> tuple[list[Any], str]:
+def invoke_case_tolerant(
+    question: str, *, temperature: float | None = None
+) -> tuple[list[Any], str]:
     """`invoke_case`, but a tool raising an error is reported instead of aborting.
 
     A tool error inside the graph propagates out of `invoke`, which would abort the
@@ -61,7 +67,7 @@ def invoke_case_tolerant(question: str) -> tuple[list[Any], str]:
     returned as a reason and scored as a failed case rather than killing the run.
     """
     try:
-        return invoke_case(question), ""
+        return invoke_case(question, temperature=temperature), ""
     except Exception as exc:  # noqa: BLE001
         return [], f"{type(exc).__name__}: {exc}"
 

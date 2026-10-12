@@ -26,19 +26,14 @@ CACHE_PATH = PROJECT_ROOT / ".cache" / "eval_agent_cache.json"
 BASELINE_PATH = PROJECT_ROOT / "evals" / "agent_baseline.json"
 CASES_PATH = PROJECT_ROOT / "evals" / "rag_cases.jsonl"
 
-# Measured by repeated live runs. Kept here rather than inferred so that the reason is
-# explicit: these cases' tool selection varies between runs at the provider default
-# sampling temperature.
-FLAKY = {
-    "prompt_injection_guardrail": (
-        "3/3 passed on one probe, failed on another run; tool selection varies "
-        "(sometimes calls a retrieval tool on an injected instruction)."
-    ),
-    "spell_pick_rate_denominator": (
-        "5 measured runs: OK, OK, FAIL, OK, OK — the model sometimes omits the "
-        "expected get_spell_stats call."
-    ),
-}
+# Cases whose outcome genuinely varies between runs. Kept explicit so the reason is on
+# the record rather than inferred.
+#
+# Currently empty: with the chat model pinned to temperature 0, the two cases that used
+# to vary (prompt_injection_guardrail, spell_pick_rate_denominator) no longer do — a
+# live refresh produced 14/15 with no case flipping. Leaving them listed as flaky would
+# excuse a future real regression against them, so the list must stay accurate.
+FLAKY: dict[str, str] = {}
 
 
 def _load(name: str, relative: str):

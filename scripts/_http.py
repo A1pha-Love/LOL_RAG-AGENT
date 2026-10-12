@@ -113,47 +113,78 @@ QUOTA_MARKERS = (
 )
 
 
-def model_quota_exhausted() -> str | None:
-    """Return a reason when the model API is unusable for billing/quota reasons.
+def _probe_quota(path: str, payload: dict, *, api_key: str) -> str | None:
+    """Return a reason when one endpoint is refused for billing/quota reasons."""
+    from lol_agent.config import chat_base_url
 
-    Used to turn API-dependent checks into SKIP rather than FAIL: a check that cannot
-    run must never look like one that found a defect, and a real regression must not
-    hide behind quota noise.
-    """
-    import urllib.error
+    request = urllib.request.Request(
+        f"{chat_base_url()}{path}",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+        method="POST",
+    )
+    try:
+        with OPENER.open(request, timeout=25) as response:
+            response.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        if any(marker in body.lower() for marker in QUOTA_MARKERS):
+            return f"{path} HTTP {exc.code}: {body[:80]}"
+    except Exception:  # noqa: BLE001
+        # Network problems are not quota problems; let the real check report them.
+        return None
+    return None
 
-    from lol_agent.config import chat_base_url, require_api_key
+
+def embedding_quota_exhausted() -> str | None:
+    """Reason embeddings cannot be used, or None."""
+    from lol_agent.config import require_api_key
     from lol_agent.knowledge import EMBEDDING_DIMENSIONS
-
-    model = os.getenv("QWEN_EMBEDDING_MODEL", "qwen3.7-text-embedding").strip()
 
     try:
         api_key = require_api_key()
     except RuntimeError as exc:
         return f"DASHSCOPE_API_KEY 不可用：{exc}"
-
-    # A real model name and a single input, so the request reaches the quota check
-    # instead of failing validation first (an unknown model returns 400 for a
-    # different reason, which would hide the quota problem).
-    probe = urllib.request.Request(
-        f"{chat_base_url()}/embeddings",
-        data=json.dumps(
-            {"model": model, "input": "探测", "dimensions": EMBEDDING_DIMENSIONS}
-        ).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-        method="POST",
+    reason = _probe_quota(
+        "/embeddings",
+        {
+            "model": os.getenv("QWEN_EMBEDDING_MODEL", "qwen3.7-text-embedding").strip(),
+            "input": "探测",
+            "dimensions": EMBEDDING_DIMENSIONS,
+        },
+        api_key=api_key,
     )
+    return f"Embedding 额度不可用（{reason}）" if reason else None
+
+
+def chat_quota_exhausted() -> str | None:
+    """Reason chat cannot be used, or None.
+
+    Separate from embeddings because the two are billed independently: an account can
+    embed while chat is refused. A combined probe would either skip checks that could
+    have run, or let chat-dependent checks fail misleadingly.
+    """
+    from lol_agent.config import require_api_key
+
     try:
-        with OPENER.open(probe, timeout=25) as response:
-            response.read()
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", "replace")
-        if any(marker in body.lower() for marker in QUOTA_MARKERS):
-            return f"模型额度不可用（HTTP {exc.code}: {body[:100]}）"
-    except Exception:  # noqa: BLE001
-        # Network problems are not quota problems; let the real check report them.
-        return None
-    return None
+        api_key = require_api_key()
+    except RuntimeError as exc:
+        return f"DASHSCOPE_API_KEY 不可用：{exc}"
+    reason = _probe_quota(
+        "/chat/completions",
+        {
+            "model": os.getenv("QWEN_CHAT_MODEL", "qwen3.8-flash").strip(),
+            "messages": [{"role": "user", "content": "OK"}],
+            "max_tokens": 1,
+        },
+        api_key=api_key,
+    )
+    return f"Chat 额度不可用（{reason}）" if reason else None
+
+
+def model_quota_exhausted() -> str | None:
+    """Reason the model API is unusable in any respect, or None."""
+    return embedding_quota_exhausted() or chat_quota_exhausted()
 
 
 class Report:

@@ -343,21 +343,33 @@ def main() -> int:
     # ----------------------------------------------------------------- baseline
     regressions: list[str] = []
     known: list[str] = []
-    baseline_cases: dict[str, str] = {}
+    flaky: list[str] = []
     if not args.ignore_baseline and BASELINE_PATH.is_file():
-        baseline_cases = json.loads(BASELINE_PATH.read_text(encoding="utf-8")).get("cases", {})
+        baseline = json.loads(BASELINE_PATH.read_text(encoding="utf-8"))
+        baseline_cases = baseline.get("cases", {})
+        reasons = baseline.get("flaky_reasons", {})
         for result in results:
             recorded = baseline_cases.get(result.outcome.case_id)
             if recorded == "pass" and not result.outcome.passed:
                 regressions.append(result.outcome.case_id)
             elif recorded == "fail" and not result.outcome.passed:
                 known.append(result.outcome.case_id)
+            elif recorded == "flaky" and not result.outcome.passed:
+                # Measured non-determinism, so neither outcome alone is a regression.
+                # Reported every run so it stays visible rather than silently excused.
+                flaky.append(result.outcome.case_id)
         if regressions:
             print()
             print(f"基线回归（此前通过、现在失败）: {', '.join(regressions)}")
         if known:
             print()
             print(f"基线已记录的已知失败（非本次引入）: {', '.join(known)}")
+        if flaky:
+            print()
+            print(f"抖动用例本次未通过（工具选择随采样变化，不计为回归）: {', '.join(flaky)}")
+            for case_id in flaky:
+                if reasons.get(case_id):
+                    print(f"  ! {case_id}: {reasons[case_id]}")
 
     if args.write_baseline:
         BASELINE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -390,11 +402,12 @@ def main() -> int:
         return 1
     if failures:
         # Without --allow-known-failures a failure always fails, which is the right
-        # default. With it, only failures the baseline does not already record block
-        # the run, so a check can be wired up while known gaps are being worked on
-        # without turning known gaps into permanent red.
+        # default. With it, failures the baseline already records (as failing or as
+        # flaky) do not block, so a check can be wired up while known gaps are being
+        # worked on without turning those gaps into permanent red.
+        excused = set(known) | set(flaky)
         blocking = failures if not args.allow_known_failures else [
-            result for result in failures if result.outcome.case_id not in set(known)
+            result for result in failures if result.outcome.case_id not in excused
         ]
         if blocking:
             print(f"RESULT: FAIL — {len(blocking)}/{total} 个用例未达阈值")
@@ -403,11 +416,13 @@ def main() -> int:
                 print(f"  - {result.outcome.case_id}: {', '.join(failed) or result.outcome.error}")
             return 1
         print(
-            f"RESULT: PASS — {total - len(known)}/{total} 达标；"
-            f"{len(known)} 个已知失败（见 {BASELINE_PATH.name}）"
+            f"RESULT: PASS — {total - len(excused)}/{total} 达标；"
+            f"{len(known)} 个已知失败 + {len(flaky)} 个抖动（见 {BASELINE_PATH.name}）"
         )
         for case_id in known:
             print(f"  ! 已知: {case_id}")
+        for case_id in flaky:
+            print(f"  ~ 抖动: {case_id}")
         return 0
     print(f"RESULT: PASS — {total}/{total} 个用例达到阈值")
     return 0

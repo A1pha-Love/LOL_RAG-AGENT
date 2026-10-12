@@ -109,13 +109,20 @@ def get_team_objective_averages(objective: str | None = None) -> dict:
 def search_project_knowledge(query: str, top_k: int = 8) -> dict[str, object]:
     """Retrieve project metric definitions, dataset boundaries, and audit evidence; cite returned source and heading.
 
+    Pass the user's question as close to their own wording as possible — normally the
+    question verbatim. This is a semantic search over project documents, so a natural
+    sentence retrieves better than a list of keywords: keyword lists match whichever
+    section shares the most vocabulary, which is often not the section that answers the
+    question.
+
+    Do NOT expand identifiers or add synonyms. In particular, do not append things like
+    "champion_id" or a champion's numeric ID to a question about names or mappings: the
+    added tokens pull the ranking toward unrelated sections (champion mechanics) and can
+    push the right section out of the results entirely. Rewriting is handled underneath
+    for follow-ups such as "他的胜率呢", so there is nothing to expand here.
+
     Returns each hit with its source path, heading path, category and version so
     the answer can cite precisely.
-
-    In a multi-turn session the query is rewritten first (see
-    ``lol_agent.conversation``) so that a follow-up such as "他的胜率呢" is
-    searched as a self-contained question. The model does not need to know this:
-    it passes the user's wording and the rewrite is applied underneath.
     """
     effective_query = current_retrieval_query(query)
     try:
@@ -210,14 +217,26 @@ def current_retrieval_query(question: str) -> str:
     return context.retrieval_query or question
 
 
-def build_agent():
-    """Compile the single-agent LangGraph; API calls happen only on invocation."""
+def build_agent(*, temperature: float | None = None):
+    """Compile the single-agent LangGraph; API calls happen only on invocation.
+
+    ``temperature`` overrides the configured sampling temperature. The default comes
+    from ``QWEN_TEMPERATURE`` when set, otherwise the provider default is left alone so
+    normal use is unaffected; the evaluation harness passes 0 to make runs comparable.
+    """
     base_url = chat_base_url()
     model_name = os.getenv("QWEN_CHAT_MODEL", "qwen3.7-flash").strip()
+    if temperature is None:
+        configured = os.getenv("QWEN_TEMPERATURE", "").strip()
+        temperature = float(configured) if configured else None
+    model_kwargs: dict[str, Any] = {}
+    if temperature is not None:
+        model_kwargs["temperature"] = temperature
     model = ChatOpenAI(
         model=model_name,
         api_key=require_api_key(),
         base_url=base_url,
+        **model_kwargs,
     ).bind_tools(AGENT_TOOLS)
 
     def call_model(state: MessagesState) -> dict:

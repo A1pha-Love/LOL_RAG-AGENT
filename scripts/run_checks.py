@@ -168,10 +168,16 @@ def _server_reachable(host: str = "127.0.0.1", port: int = 8000) -> bool:
 # as SKIP — never as PASS, which would fake coverage.
 SERVER_STEPS = {"sse", "concurrent", "endpoints"}
 
-# Steps that call the model API. Reported as SKIP when the account cannot call it,
-# for the same reason: a quota problem is not a defect, and must not be presented as
-# one, nor hide a real regression behind noise.
-API_STEPS = {"kbase", "recall", "sse", "concurrent"}
+# Steps that call the model API, keyed by which quota they need. Embeddings and chat
+# are billed independently, so a step is skipped only when *its own* dependency is
+# unavailable — otherwise a chat outage would silently drop the embedding-only checks
+# and lose coverage that could still have run.
+API_STEPS = {
+    "kbase": "embedding",
+    "recall": "embedding",
+    "sse": "chat",
+    "concurrent": "chat",
+}
 
 
 def _agent_eval_needs_model() -> bool:
@@ -189,28 +195,46 @@ def _agent_eval_needs_model() -> bool:
         return True
 
 
-def _model_unavailable() -> str | None:
-    """Reason the model API cannot be used, or None when it works."""
+def _quota_reasons() -> dict[str, str]:
+    """Probe each quota once: several steps share a dependency and the answer is equal."""
     import importlib.util
 
     scripts_dir = PROJECT_ROOT / "scripts"
     spec = importlib.util.spec_from_file_location("_checks_http", scripts_dir / "_http.py")
     if spec is None or spec.loader is None:
-        return None
+        return {}
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.model_quota_exhausted()
+    reasons: dict[str, str] = {}
+    for kind, probe in (
+        ("embedding", module.embedding_quota_exhausted),
+        ("chat", module.chat_quota_exhausted),
+    ):
+        reason = probe()
+        if reason:
+            reasons[kind] = reason
+    return reasons
 
 
-def run(step: Step, *, index_present: bool, model_reason: str | None = None) -> tuple[bool, str, float]:
+def run(
+    step: Step,
+    *,
+    index_present: bool,
+    quota_reasons: dict[str, str] | None = None,
+) -> tuple[bool, str, float]:
+    quota_reasons = quota_reasons or {}
     if step.needs_index and not index_present:
         return True, "skipped (index not built)", 0.0
     if step.key in SERVER_STEPS and not _server_reachable():
         return True, "skipped 服务器未运行（127.0.0.1:8000）", 0.0
+
     # The Agent evaluation only needs the model when it has nothing cached to replay.
-    needs_model = step.key in API_STEPS or (step.key == "agent_eval" and _agent_eval_needs_model())
-    if needs_model and model_reason:
-        return True, f"skipped {model_reason}", 0.0
+    if step.key == "agent_eval":
+        needed = "chat" if _agent_eval_needs_model() else None
+    else:
+        needed = API_STEPS.get(step.key)
+    if needed and quota_reasons.get(needed):
+        return True, f"skipped {quota_reasons[needed]}", 0.0
 
     environment = dict(os.environ)
     environment["PYTHONIOENCODING"] = "utf-8"
@@ -252,18 +276,17 @@ def main() -> int:
         return 0
 
     index_present = (PROJECT_ROOT / "reports" / "knowledge.db").is_file()
-    # Probed once: several steps would otherwise each spend a request discovering the
-    # same thing, and the reason is the same for all of them.
-    model_reason = _model_unavailable()
+    # Probed once per dependency: several steps share one, and the answer is the same.
+    quota_reasons = _quota_reasons()
     print("=" * 88)
     print(f"离线检查（{len(steps)} 步）{'— 快速模式' if args.fast else ''}")
-    if model_reason:
-        print(f"注意：{model_reason} — 依赖模型 API 的步骤将标记为 SKIP")
+    for kind, reason in quota_reasons.items():
+        print(f"注意：{reason} — 依赖 {kind} 的步骤将标记为 SKIP")
     print("=" * 88)
 
     failures: list[tuple[Step, str]] = []
     for step in steps:
-        ok, output, elapsed = run(step, index_present=index_present, model_reason=model_reason)
+        ok, output, elapsed = run(step, index_present=index_present, quota_reasons=quota_reasons)
         marker = "PASS" if ok else "FAIL"
         note = ""
         if output.strip().startswith("skipped"):

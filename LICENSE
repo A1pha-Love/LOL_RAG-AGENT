@@ -20,33 +20,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
-================================================================================
-THIRD-PARTY CONTENT — NOT COVERED BY THE MIT LICENSE ABOVE
-================================================================================
-
-This repository bundles or references material that is not the work of the
-project author. The MIT grant above applies to the project's own source code
-(and its documentation and comments); the items below remain under their own
-terms and are redistributed here as permitted by those terms.
-
-1. Riot Games static data (Data Dragon)
-   Paths:  kbase/domain_*.md, docs/champion_mapping*.json,
-           docs/mapping_*.json, kbase/conflict_item_catalog_drift.md
-   Origin: https://developer.riotgames.com/docs/lol#data-dragon
-   Copyright: Riot Games, Inc. Redistributed under Riot's "Legal Jibber Jabber"
-   terms for non-commercial community use. This project is not endorsed by Riot
-   Games and does not reflect the views or opinions of Riot Games or anyone
-   officially involved in producing or managing Riot Games properties. Riot
-   Games and all associated properties are trademarks or registered trademarks
-   of Riot Games, Inc.
-   Note: the raw snapshot files (ShuJuYuan/ddragon/) are NOT committed; only
-   derived mappings and documentation built from them are.
-
-2. Kaggle dataset metadata
-   Paths:  ShuJuYuan/champion_info.json, champion_info_2.json,
-           summoner_spell_info.json
-   Origin: https://www.kaggle.com/datasets/datasnaek/league-of-legends
-   Author: Mitchell J. License: CC0 1.0 (Public Domain).
-   Note: the match data itself (ShuJuYuan/games.csv, also CC0) is NOT committed;
-   the README explains how to obtain it.

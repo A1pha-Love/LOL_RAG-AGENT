@@ -274,7 +274,8 @@ Agent 行为由 `scripts/eval_agent.py` 按阈值门禁（工具选择、未调�
 
 本项目采用 **MIT 许可证**，见 [LICENSE](LICENSE)。
 
-**第三方内容不适用 MIT 条款**，已在该文件末尾逐项列出来源与条款：
+**第三方内容不适用 MIT 条款**，已逐项列出来源与条款，见
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，要点：
 
 - **Riot Games 静态数据（Data Dragon）**：仓库内由该数据派生的文档与映射
   （`kbase/domain_*.md`、`docs/mapping_*.json`、`docs/champion_mapping_7_17_1.json` 等）

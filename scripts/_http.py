@@ -102,19 +102,36 @@ def skip(base: str = DEFAULT_BASE) -> int:
     return SKIP_EXIT_CODE
 
 
-# Substrings that identify "the account cannot call the model right now" rather than
-# a code defect. Deliberately narrow: a genuine bug must still fail loudly.
-QUOTA_MARKERS = (
+# Substrings that identify "the account cannot call the model right now" for reasons
+# outside the project's control: no credential, a rejected credential, exhausted
+# quota, or an unpaid account. Deliberately narrow — a malformed request is a defect
+# and must still fail loudly.
+#
+# Credential failures belong here rather than being reported as quota problems. A
+# fresh clone has no key at all, and reporting that as "quota exhausted" sent a reader
+# looking in the wrong place. The two are now worded differently on purpose.
+UNAVAILABLE_MARKERS = (
+    # billing / quota
     "free quota exhausted",
     "freetieronly",
     "allocationquota",
     "insufficient balance",
     "arrearage",
+    # credential rejected by the provider
+    "invalidapikey",
+    "invalid_api_key",
+    "incorrect api key",
+    "authenticationerror",
+    "unauthorized",
+    "access_denied",
 )
 
+# Kept as an alias: run_checks.py imports this name to classify a failed step's output.
+QUOTA_MARKERS = UNAVAILABLE_MARKERS
 
-def _probe_quota(path: str, payload: dict, *, api_key: str) -> str | None:
-    """Return a reason when one endpoint is refused for billing/quota reasons."""
+
+def _probe_endpoint(path: str, payload: dict, *, api_key: str) -> str | None:
+    """Return a reason when one endpoint is refused for a quota or credential reason."""
     from lol_agent.config import chat_base_url
 
     request = urllib.request.Request(
@@ -128,7 +145,7 @@ def _probe_quota(path: str, payload: dict, *, api_key: str) -> str | None:
             response.read()
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", "replace")
-        if any(marker in body.lower() for marker in QUOTA_MARKERS):
+        if any(marker in body.lower() for marker in UNAVAILABLE_MARKERS):
             return f"{path} HTTP {exc.code}: {body[:80]}"
     except Exception:  # noqa: BLE001
         # Network problems are not quota problems; let the real check report them.
@@ -136,16 +153,21 @@ def _probe_quota(path: str, payload: dict, *, api_key: str) -> str | None:
     return None
 
 
-def embedding_quota_exhausted() -> str | None:
-    """Reason embeddings cannot be used, or None."""
+def embedding_unavailable_reason() -> str | None:
+    """Why embeddings cannot be used, or None when they work.
+
+    Reports a missing credential and a refused credential as themselves, not as a
+    quota problem. Conflating the three previously produced a message that sent a
+    reader to check billing when the actual state was "no API key configured".
+    """
     from lol_agent.config import require_api_key
     from lol_agent.knowledge import EMBEDDING_DIMENSIONS
 
     try:
         api_key = require_api_key()
     except RuntimeError as exc:
-        return f"DASHSCOPE_API_KEY 不可用：{exc}"
-    reason = _probe_quota(
+        return f"未配置 API 凭据（{exc}）"
+    reason = _probe_endpoint(
         "/embeddings",
         {
             "model": os.getenv("QWEN_EMBEDDING_MODEL", "qwen3.7-text-embedding").strip(),
@@ -154,11 +176,11 @@ def embedding_quota_exhausted() -> str | None:
         },
         api_key=api_key,
     )
-    return f"Embedding 额度不可用（{reason}）" if reason else None
+    return f"Embedding 端点不可用（{reason}）" if reason else None
 
 
-def chat_quota_exhausted() -> str | None:
-    """Reason chat cannot be used, or None.
+def chat_unavailable_reason() -> str | None:
+    """Why chat cannot be used, or None when it works.
 
     Separate from embeddings because the two are billed independently: an account can
     embed while chat is refused. A combined probe would either skip checks that could
@@ -169,8 +191,8 @@ def chat_quota_exhausted() -> str | None:
     try:
         api_key = require_api_key()
     except RuntimeError as exc:
-        return f"DASHSCOPE_API_KEY 不可用：{exc}"
-    reason = _probe_quota(
+        return f"未配置 API 凭据（{exc}）"
+    reason = _probe_endpoint(
         "/chat/completions",
         {
             "model": os.getenv("QWEN_CHAT_MODEL", "qwen3.8-flash").strip(),
@@ -179,12 +201,19 @@ def chat_quota_exhausted() -> str | None:
         },
         api_key=api_key,
     )
-    return f"Chat 额度不可用（{reason}）" if reason else None
+    return f"Chat 端点不可用（{reason}）" if reason else None
+
+
+# Names kept for existing callers (run_checks.py, check scripts). They now report a
+# missing credential and a refused credential distinctly, instead of labelling every
+# unusable state as a quota problem.
+embedding_quota_exhausted = embedding_unavailable_reason
+chat_quota_exhausted = chat_unavailable_reason
 
 
 def model_quota_exhausted() -> str | None:
     """Reason the model API is unusable in any respect, or None."""
-    return embedding_quota_exhausted() or chat_quota_exhausted()
+    return embedding_unavailable_reason() or chat_unavailable_reason()
 
 
 class Report:

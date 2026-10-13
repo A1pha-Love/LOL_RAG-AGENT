@@ -4,6 +4,11 @@ version = "0.1.0"
 description = "A League of Legends ranked data analysis agent with RAG"
 requires-python = ">=3.14,<3.15"
 readme = "README.md"
+# Metadata only: the MIT grant covers this project's own source code. Riot's Data
+# Dragon material that the repository bundles is under Riot's own terms — see the
+# third-party section at the end of the LICENSE file.
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "langgraph==1.2.14",
     "langchain-openai==1.6.7",

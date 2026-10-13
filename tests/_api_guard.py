@@ -31,12 +31,31 @@ from lol_agent.config import require_api_key  # noqa: E402
 # Set LOL_AGENT_SKIP_API_TESTS=1 to skip every API-dependent test without probing.
 SKIP_ENV = "LOL_AGENT_SKIP_API_TESTS"
 
+# Reasons the API cannot be used that are environmental rather than defects. Kept
+# deliberately narrow: a malformed request is a bug and must still fail loudly.
+#
+# Authentication failures belong here. A fresh clone has only `.env.example`, whose key
+# is empty, so `conftest` injects a placeholder; the provider then answers 401. Without
+# these markers the skip guard would not recognise that as "cannot run", and the suite
+# would FAIL on a clean checkout — which is exactly what happened before they were
+# added.
 _MARKERS = (
     "free quota exhausted",
     "freetieronly",
     "allocationquota",
     "insufficient balance",
     "arrearage",
+    # authentication / authorization failures
+    "invalidapikey",
+    "invalid_api_key",
+    "incorrect api key",
+    "authenticationerror",
+    "unauthorized",
+    "401",
+    # an explicit statement that the credential cannot call this model
+    "model not found",
+    "permissiondenied",
+    "access_denied",
 )
 
 _probe_cache: dict[str, str | None] = {}

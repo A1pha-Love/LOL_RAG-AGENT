@@ -269,3 +269,28 @@ Agent 行为由 `scripts/eval_agent.py` 按阈值门禁（工具选择、未调�
 
 **基线绑定模型**：基线记录它所属的 `chat_model` 与 `temperature`，评测缓存键也包含模型名。
 换模型后旧基线不会继续沿用，需要 `--refresh` 后重建（`scripts/write_agent_baseline.py`）。
+
+## 许可证
+
+本项目采用 **MIT 许可证**，见 [LICENSE](LICENSE)。
+
+**第三方内容不适用 MIT 条款**，已在该文件末尾逐项列出来源与条款：
+
+- **Riot Games 静态数据（Data Dragon）**：仓库内由该数据派生的文档与映射
+  （`kbase/domain_*.md`、`docs/mapping_*.json`、`docs/champion_mapping_7_17_1.json` 等）
+  版权属 Riot Games，按其社区使用条款分发。本项目**未获 Riot Games 认可**，也不代表其
+  观点。原始快照（`ShuJuYuan/ddragon/`）未纳入版本库。
+- **Kaggle 数据集附带元数据**：`ShuJuYuan/champion_info*.json`、
+  `summoner_spell_info.json`，作者 Mitchell J，许可 **CC0 1.0（公有领域）**。
+  对局数据本身（`games.csv`，同为 CC0）未纳入版本库，获取方式见上文快速开始。
+
+> **发布前请替换 LICENSE 中的版权署名为你的姓名或 GitHub 用户名**。当前占位名与 git
+> 提交身份一致（`lol-ranked-data-agent <lol-agent@localhost>`），GitHub 无法据此归属提交。
+
+## 致谢
+
+- 数据集：[datasnaek/league-of-legends](https://www.kaggle.com/datasets/datasnaek/league-of-legends)
+  （Mitchell J，CC0 1.0）
+- 静态数据：Riot Games [Data Dragon](https://developer.riotgames.com/docs/lol#data-dragon)
+- 模型与检索：阿里云百炼 DashScope（Qwen 对话 / Embedding / Rerank）
+- Agent 编排：LangGraph、LangChain

@@ -284,8 +284,9 @@ Agent 行为由 `scripts/eval_agent.py` 按阈值门禁（工具选择、未调�
   `summoner_spell_info.json`，作者 Mitchell J，许可 **CC0 1.0（公有领域）**。
   对局数据本身（`games.csv`，同为 CC0）未纳入版本库，获取方式见上文快速开始。
 
-> **发布前请替换 LICENSE 中的版权署名为你的姓名或 GitHub 用户名**。当前占位名与 git
-> 提交身份一致（`lol-ranked-data-agent <lol-agent@localhost>`），GitHub 无法据此归属提交。
+> 版权署名已设为 **A1pha-Love**（<https://github.com/A1pha-Love>）。项目不再更新，因此
+> 提交历史中的 author 仍为本地占位身份（`lol-ranked-data-agent <lol-agent@localhost>`），
+> GitHub 不会把这些提交关联到该账号。这只影响提交历史的显示，不影响许可证效力。
 
 ## 致谢
 
